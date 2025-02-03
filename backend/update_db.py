@@ -6,7 +6,7 @@ import json
 from PIL import Image
 
 
-def store_embeddings(db_path, output_file="face_embeddings.json"):
+def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
     # Load existing embeddings if file exists
     existing_embeddings = {}
     if os.path.exists(output_file):
@@ -62,14 +62,14 @@ def store_embeddings(db_path, output_file="face_embeddings.json"):
     print(f"\nEmbeddings saved to {output_file}")
 
 
-def load_embeddings(input_file="face_embeddings.json"):
+def load_embeddings(input_file="backend/face_embeddings.json"):
     with open(input_file, "r") as f:
         embeddings = json.load(f)
     return embeddings
 
 
 if __name__ == "__main__":
-    db_path = "dataset"
+    db_path = "backend/dataset"
     store_embeddings(db_path)
     embeddings = load_embeddings()
     print("Loaded embeddings:", embeddings)
