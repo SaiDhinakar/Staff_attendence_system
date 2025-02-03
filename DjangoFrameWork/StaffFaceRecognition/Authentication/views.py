@@ -2,8 +2,16 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from .forms import RegisterForm
+from django.contrib.auth.decorators import user_passes_test
 
+def anonymous_required(function=None):
+    def wrapper(request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return redirect('home')
+        return function(request, *args, **kwargs)
+    return wrapper
+
+@anonymous_required
 def login_view(request):
     if request.method == 'POST':
         username = request.POST['username']
@@ -19,22 +27,3 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
-
-def register_view(request):
-    if request.method == 'POST':
-        form = RegisterForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)  # Auto login after registration
-            messages.success(request, 'Registration successful!')
-            return redirect('home')
-        else:
-            messages.error(request, 'Registration failed. Please correct the errors.')
-    else:
-        form = RegisterForm()
-    return render(request, 'authentication/register.html', {'form': form})
-
-
-@login_required
-def home_view(request):
-    return render(request, 'home.html')
