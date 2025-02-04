@@ -1,121 +1,121 @@
-import cv2
-import torch
+import sqlite3
 import json
-import os
-from facenet_pytorch import MTCNN, InceptionResnetV1
-from PIL import Image
+from datetime import datetime
 
+class AttendanceDB:
+    def __init__(self, db_name="attendance.db"):
+        self.db_name = db_name
+        self.init_db()
 
-class FaceDetect:
-    def __init__(self, db_file="backend/face_embeddings.json"):
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        print(f'Running on device: {self.device}')
+    def init_db(self):
+        """Initialize the database and create tables if they don't exist."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
 
-        # Initialize models
-        self.mtcnn = MTCNN(keep_all=True, device=self.device)  # Detect multiple faces
-        self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
+        # Employee Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS employee (
+                Emp_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Emp_name TEXT NOT NULL,
+                Department TEXT NOT NULL
+            )
+        """)
 
-        # Load known embeddings
-        self.db_file = db_file
-        self.embeddings = self.load_embeddings()
+        # Attendance Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS attendance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Date TEXT NOT NULL,
+                Emp_id INTEGER NOT NULL,
+                Emp_name TEXT NOT NULL,
+                Time TEXT NOT NULL,
+                FOREIGN KEY (Emp_id) REFERENCES employee (Emp_id)
+            )
+        """)
 
-    def load_embeddings(self):
-        """Load face embeddings from a JSON file."""
-        if os.path.exists(self.db_file):
-            with open(self.db_file, "r") as f:
-                return json.load(f)
+        conn.commit()
+        conn.close()
+
+    def add_employee(self, emp_name, department):
+        """Add a new employee to the database."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO employee (Emp_name, Department) VALUES (?, ?)", (emp_name, department))
+        conn.commit()
+        conn.close()
+
+    def log_attendance(self, emp_id):
+        """Log an employee's attendance with timestamp."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+
+        now = datetime.now().strftime("%I:%M %p")  # Format time as 09:00 AM
+        today_date = datetime.now().strftime("%Y-%m-%d")
+
+        # Check if the employee exists
+        cursor.execute("SELECT Emp_name FROM employee WHERE Emp_id = ?", (emp_id,))
+        row = cursor.fetchone()
+        if not row:
+            print(f"Employee ID {emp_id} not found!")
+            conn.close()
+            return
+
+        emp_name = row[0]
+
+        # Check if an entry exists for today
+        cursor.execute("SELECT Time FROM attendance WHERE Emp_id = ? AND Date = ?", (emp_id, today_date))
+        row = cursor.fetchone()
+
+        if row:
+            timestamps = row[0].split(",")  # Convert stored string to list
+            last_time = datetime.strptime(timestamps[-1], "%I:%M %p")
+            now_time = datetime.strptime(now, "%I:%M %p")
+
+            # Ensure a minimum of 5 minutes gap
+            if (now_time - last_time).total_seconds() >= 300:
+                timestamps.append(now)
+                cursor.execute("UPDATE attendance SET Time = ? WHERE Emp_id = ? AND Date = ?",
+                               (",".join(timestamps), emp_id, today_date))
         else:
-            print(f"Embedding file {self.db_file} not found.")
-            return {}
+            cursor.execute("INSERT INTO attendance (Date, Emp_id, Emp_name, Time) VALUES (?, ?, ?, ?)",
+                           (today_date, emp_id, emp_name, now))
 
-    def recognize_face(self, face_tensor):
-        """Compares face embeddings to known faces in the database."""
-        if face_tensor is None:
-            return "Unknown", None
+        conn.commit()
+        conn.close()
 
-        # Ensure tensor has the correct shape before passing to the model
-        if len(face_tensor.shape) == 3:  # If shape is [3, 160, 160], add batch dim
-            face_tensor = face_tensor.unsqueeze(0)  # Shape becomes [1, 3, 160, 160]
+    def get_attendance(self):
+        """Retrieve attendance records."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM attendance")
+        records = cursor.fetchall()
+        conn.close()
+        return records
 
-        embedding = self.resnet(face_tensor.to(self.device)).detach().cpu()
-
-        min_dist = float('inf')
-        identity = "Unknown"
-
-        for name, encodings in self.embeddings.items():
-            for db_enc in encodings:
-                dist = torch.nn.functional.pairwise_distance(
-                    embedding,
-                    torch.tensor(db_enc).unsqueeze(0)
-                ).item()
-
-                if dist < min_dist:
-                    min_dist = dist
-                    identity = name
-
-        threshold = 0.6
-        return (identity, min_dist) if min_dist <= threshold else ("Unknown", min_dist)
-
-    def process_frame(self, frame):
-        """Detect faces in the frame and trigger recognition if needed."""
-        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-
-        boxes, _ = self.mtcnn.detect(img)
-        if boxes is None:
-            return frame  # No faces detected
-
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box)
-            face_width = x2 - x1
-
-            # Define face distance threshold
-            min_face_size = 120
-            max_face_size = 250
-
-            # Initialize identity to avoid UnboundLocalError
-            identity = "Unknown"
-
-            if min_face_size < face_width < max_face_size:
-                face_img = img.crop((x1, y1, x2, y2))
-                face_tensor = self.mtcnn(face_img)
-
-                if face_tensor is not None:
-                    face_tensor = face_tensor.unsqueeze(0) if len(
-                        face_tensor.shape) == 3 else face_tensor  # Ensure correct shape
-                    identity, dist = self.recognize_face(face_tensor)
-
-                    # 🔹 Print the recognized identity in the console
-                    print(f"Recognized: {identity} | Distance: {dist:.4f}")
-
-                    # 🔹 Display identity on the video frame
-                    cv2.putText(frame, f"{identity}", (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-            # Assign color based on identity status
-            color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-        return frame
-
-    def run_camera(self):
-        """Starts live face detection-based attendance system."""
-        cap = cv2.VideoCapture(0)  # Open webcam (change to camera index if needed)
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            frame = self.process_frame(frame)
-
-            cv2.imshow("Face Recognition System", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to exit
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
+    def get_employees(self):
+        """Retrieve all employees."""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM employee")
+        records = cursor.fetchall()
+        conn.close()
+        return records
 
 
 # Example Usage:
-face_detector = FaceDetect()
-face_detector.run_camera()
+db = AttendanceDB()
+
+# Add Employees (Only Run Once)
+db.add_employee("Alice Johnson", "HR")
+db.add_employee("Bob Smith", "IT")
+db.add_employee("Charlie Davis", "Finance")
+db.add_employee("David Brown", "Marketing")
+db.add_employee("Emma Wilson", "Engineering")
+
+# Log Attendance
+db.log_attendance(1)  # Alice Johnson
+db.log_attendance(2)  # Bob Smith
+
+# Print Tables
+print("Attendance Records:", db.get_attendance())
+print("Employees:", db.get_employees())
