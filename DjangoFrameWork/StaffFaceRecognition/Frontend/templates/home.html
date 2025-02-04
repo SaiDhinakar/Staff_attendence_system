@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="home-container">
+    <h1>Welcome, {{ request.user.username }}!</h1>
+    <div class="user-info">
+        <p>Email: {{ request.user.email }}</p>
+        <p>Name: {{ request.user.first_name }} {{ request.user.last_name }}</p>
+    </div>
+    <a href="{% url 'logout' %}" class="logout-btn">Logout</a>
+</div>
+
+<style>
+.home-container {
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 2rem;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    border-radius: 8px;
+}
+
+.user-info {
+    margin: 2rem 0;
+}
+
+.logout-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #dc3545;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.logout-btn:hover {
+    background-color: #c82333;
+}
+</style>
+{% endblock %}
