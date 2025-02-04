@@ -2,7 +2,6 @@ import cv2
 import torch
 import json
 import os
-import numpy as np
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 
@@ -70,7 +69,7 @@ class FaceDetect:
             face_width = x2 - x1
 
             # Define face distance threshold
-            min_face_size = 80
+            min_face_size = 120
             max_face_size = 250
 
             # Initialize identity to avoid UnboundLocalError
