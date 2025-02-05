@@ -7,10 +7,11 @@ import threading
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import base64
-from flask import Flask, Response, jsonify
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 import numpy as np
 
-app = Flask(__name__)
+app = FastAPI()
 
 class FaceDetect:
     def __init__(self, db_file="backend/face_embeddings.json"):
@@ -138,7 +139,6 @@ def video_capture():
 
     cap.release()
 
-
 def generate_video_stream():
     """Generate a continuous video stream with detection results."""
     global latest_frame, latest_detected_ids, latest_detection_times
@@ -153,17 +153,16 @@ def generate_video_stream():
 
         time.sleep(0.1)  # Control frame rate
 
-
-@app.route('/video_stream', methods=['GET'])
-def video_stream():
+@app.get('/video_stream')
+async def video_stream():
     """Stream video with face detection results to the client."""
-    return Response(generate_video_stream(), mimetype='text/event-stream')
-
+    return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
 if __name__ == '__main__':
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
     video_thread.start()
 
-    # Start the Flask API (for sending the processed video stream)
-    app.run(debug=True, use_reloader=False)
+    # Start the FastAPI server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
