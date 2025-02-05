@@ -7,11 +7,21 @@ import threading
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import base64
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
 
 app = FastAPI()
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class FaceDetect:
     def __init__(self, db_file="backend/face_embeddings.json"):
@@ -25,6 +35,7 @@ class FaceDetect:
         # Load known embeddings
         self.db_file = db_file
         self.embeddings = self.load_embeddings()
+        self.camera = cv2.VideoCapture(0)
 
     def load_embeddings(self):
         """Load face embeddings from a JSON file."""
@@ -110,6 +121,16 @@ class FaceDetect:
         img_bytes = buffer.tobytes()
         return base64.b64encode(img_bytes).decode('utf-8')
 
+    def gen_frames(self):
+        while True:
+            success, frame = self.camera.read()
+            if not success:
+                break
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
 
 face_detector = FaceDetect()
 
@@ -157,12 +178,26 @@ def generate_video_stream():
 async def video_stream():
     """Stream video with face detection results to the client."""
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
+<<<<<<< HEAD
+=======
 
-if __name__ == '__main__':
+@app.get("/video_feed")
+async def video_feed():
+    return Response(
+        content=face_detector.gen_frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+>>>>>>> 38f94c7 (Refactor video streaming to use FastAPI; update home template for live feed display)
+
+if __name__ == "__main__":
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
     video_thread.start()
 
     # Start the FastAPI server
     import uvicorn
+<<<<<<< HEAD
     uvicorn.run(app, host="0.0.0.0", port=8000)
+=======
+    uvicorn.run(app, host="0.0.0.0", port=5000)
+>>>>>>> 38f94c7 (Refactor video streaming to use FastAPI; update home template for live feed display)
