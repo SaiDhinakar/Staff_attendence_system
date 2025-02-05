@@ -25,7 +25,7 @@ def home_view(request):
     today_attendance = Attendance.objects.filter(date=today).select_related('emp')
     
     # Calculate statistics
-    present_count = today_attendance.filter(status='present').count()
+    present_count = today_attendance.count()
     absent_count = total_staff - present_count
     
     context = {
@@ -73,7 +73,8 @@ def report_view(request):
     end_date = request.GET.get('end_date')
     
     # Query attendance data
-    attendance_query = Attendance.objects.all()
+    attendance_query = Attendance.objects.select_related('emp').all()
+    
     if start_date and end_date:
         attendance_query = attendance_query.filter(
             date__range=[start_date, end_date]
@@ -84,11 +85,48 @@ def report_view(request):
     today = timezone.now().date()
     today_attendance = Attendance.objects.filter(date=today)
     
+    # Calculate present/absent based on time_list
+    present_count = today_attendance.exclude(time_list__isnull=True).exclude(time_list__exact='').count()
+    absent_count = total_employees - present_count
+    
+    # Process attendance records
+    processed_attendance = []
+    for record in attendance_query:
+        times = record.time_list.split(';') if record.time_list else []
+        in_time = times[0] if times else '--:--'
+        out_time = times[-1] if len(times) > 1 else '--:--'
+        
+        # Calculate working hours if both in and out times exist
+        working_hours = 0
+        if len(times) > 1:
+            try:
+                time_in = datetime.strptime(times[0], '%H:%M')
+                time_out = datetime.strptime(times[-1], '%H:%M')
+                diff = time_out - time_in
+                working_hours = round(diff.total_seconds() / 3600, 2)
+            except ValueError:
+                working_hours = 0
+        
+        status = 'Absent'
+        if times:
+            status = 'Present' if len(times) > 1 else 'Present (No Out Time)'
+        
+        processed_attendance.append({
+            'date': record.date,
+            'emp_id': record.emp.emp_id,
+            'emp_name': record.emp.emp_name,
+            'department': record.emp.department,
+            'in_time': in_time,
+            'out_time': out_time,
+            'working_hours': working_hours,
+            'status': status
+        })
+    
     context = {
-        'attendance_data': attendance_query,
+        'attendance_data': processed_attendance,
         'total_employees': total_employees,
-        'present_today': today_attendance.filter(status='present').count(),
-        'absent_today': today_attendance.filter(status='absent').count()
+        'present_today': present_count,
+        'absent_today': absent_count
     }
     
     return render(request, 'report.html', context)
@@ -146,3 +184,44 @@ def export_report(request):
         logger.error(f"Export failed: {str(e)}")
         messages.error(request, 'Failed to export report')
         return redirect('report')
+    
+
+@login_required
+@user_passes_test(is_superuser)
+def manage_employees(request):
+    employees = Employee.objects.all()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add':
+            emp_id = request.POST.get('emp_id')
+            emp_name = request.POST.get('emp_name')
+            department = request.POST.get('department')
+            
+            Employee.objects.create(
+                emp_id=emp_id,
+                emp_name=emp_name,
+                department=department
+            )
+            messages.success(request, 'Employee added successfully')
+            
+        elif action == 'delete':
+            emp_id = request.POST.get('emp_id')
+            Employee.objects.filter(emp_id=emp_id).delete()
+            messages.success(request, 'Employee deleted successfully')
+            
+        elif action == 'update':
+            emp_id = request.POST.get('emp_id')
+            emp_name = request.POST.get('emp_name')
+            department = request.POST.get('department')
+            
+            Employee.objects.filter(emp_id=emp_id).update(
+                emp_name=emp_name,
+                department=department
+            )
+            messages.success(request, 'Employee updated successfully')
+            
+    context = {
+        'employees': employees
+    }
+    return render(request, 'manage_employees.html', context)

@@ -14,6 +14,13 @@
             ><i class="fas fa-chart-bar"></i> Reports</a
           >
         </li>
+        {% if user.is_superuser %}
+        <li>
+          <a href="{% url 'manage_employees' %}">
+              <i class="fas fa-users-cog"></i> Manage Employees
+          </a>
+      </li>
+      {% endif %}
         <li>
           <a href="{% url 'logout' %}"
             ><i class="fas fa-sign-out-alt"></i> Logout</a
@@ -55,34 +62,34 @@
               {{ date.grouper|date:"F d, Y" }}
             </div>
             <div class="table-wrapper">
-              <table>
+              <table class="report-table">
                 <thead>
-                  <tr>
-                    <th>Staff ID</th>
-                    <th>Name</th>
-                    <th>Department</th>
-                    <th>In Time</th>
-                    <th>Out Time</th>
-                    <th>Status</th>
-                  </tr>
+                    <tr>
+                        <th>Date</th>
+                        <th>Staff ID</th>
+                        <th>Name</th>
+                        <th>Department</th>
+                        <th>In Time</th>
+                        <th>Out Time</th>
+                        <th>Working Hours</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody>
-                  {% for record in date.list %}
-                  <tr>
-                    <td>{{ record.emp.emp_id }}</td>
-                    <td>{{ record.emp.emp_name }}</td>
-                    <td>{{ record.emp.department }}</td>
-                    <td>{{ record.time_in|time:"h:i A"|default:"--:--" }}</td>
-                    <td>{{ record.time_out|time:"h:i A"|default:"--:--" }}</td>
-                    <td>
-                      <span class="status {{ record.status }}">
-                        {{ record.status|title }}
-                      </span>
-                    </td>
-                  </tr>
-                  {% endfor %}
+                    {% for record in attendance_data %}
+                    <tr>
+                        <td>{{ record.date|date:"d/m/Y" }}</td>
+                        <td>{{ record.emp_id }}</td>
+                        <td>{{ record.emp_name }}</td>
+                        <td>{{ record.department }}</td>
+                        <td>{{ record.in_time|default:"--:--" }}</td>
+                        <td>{{ record.out_time|default:"--:--" }}</td>
+                        <td>{{ record.working_hours|floatformat:2 }} hrs</td>
+                        <td><span class="status {{ record.status|lower }}">{{ record.status }}</span></td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
-              </table>
+            </table>
             </div>
           </div>
           {% endfor %}

@@ -13,8 +13,16 @@
           >
         </li>
         <li>
-          <a href="{% url 'report' %}"><i class="fas fa-sign-out-alt"></i>Report</a>
+          <a href="{% url 'report' %}" class="fas">
+            <i class="fas fa-chart-bar"></i> Reports</a>
         </li>
+        {% if user.is_superuser %}
+        <li>
+          <a href="{% url 'manage_employees' %}">
+              <i class="fas fa-users-cog"></i> Manage Employees
+          </a>
+      </li>
+      {% endif %}
         <li>
           <a href="{% url 'logout' %}"
             ><i class="fas fa-sign-out-alt"></i> Logout</a
