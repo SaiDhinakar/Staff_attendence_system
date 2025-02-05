@@ -59,7 +59,7 @@ def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
     # Save updated embeddings
     with open(output_file, "w") as f:
         json.dump(dict(embeddings), f, indent=4)
-    print(f"\nEmbeddings saved to {output_file}")
+    # print(f"\nEmbeddings saved to {output_file}")
 
 
 def load_embeddings(input_file="backend/face_embeddings.json"):
@@ -72,4 +72,4 @@ if __name__ == "__main__":
     db_path = "backend/dataset"
     store_embeddings(db_path)
     embeddings = load_embeddings()
-    print("Loaded embeddings:", embeddings)
+    # print("Loaded embeddings:", embeddings)
