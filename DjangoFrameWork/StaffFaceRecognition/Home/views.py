@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.http import HttpResponse
 from django.utils import timezone
 from .models import Employee, Attendance
+from datetime import datetime
 import logging
 import csv
 
@@ -39,33 +40,6 @@ def home_view(request):
     }
     
     return render(request, 'home.html', context)
-
-# @login_required
-# @user_passes_test(is_superuser)
-# def settings_view(request):
-#     users = User.objects.all().exclude(username=request.user.username)
-#     context = {
-#         'users': users,
-#         'total_users': users.count(),
-#         'active_users': users.filter(is_active=True).count(),
-#         'staff_users': users.filter(is_staff=True).count(),
-#         'superusers': users.filter(is_superuser=True).count()
-#     }
-#     return render(request, 'admin_panel.html', context)
-
-
-# @login_required
-# @user_passes_test(is_superuser)
-# def update_user(request, user_id):
-#     if request.method == 'POST':
-#         user = User.objects.get(id=user_id)
-#         user.is_active = request.POST.get('is_active') == 'true'
-#         user.is_staff = request.POST.get('is_staff') == 'true'
-#         user.is_superuser = request.POST.get('is_superuser') == 'true'
-#         user.save()
-#         messages.success(request, f'User {user.username} updated successfully')
-#     return redirect('settings')
-
 
 @login_required
 def report_view(request):

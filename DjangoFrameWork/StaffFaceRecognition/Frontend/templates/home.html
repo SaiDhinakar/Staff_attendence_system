@@ -1,4 +1,5 @@
-{% extends 'base.html' %} {% load static %} {% block content %}
+{% extends 'base.html' %} {% load static %}
+{% block content %}
 <div class="container">
   <!-- Sidebar -->
   <div class="sidebar">
@@ -35,8 +36,7 @@
   <!-- Main Content -->
   <div class="main-content">
     <div class="header">
-      <h1>Welcome to Staff Dashboard</h1>
-      <p class="current-time" id="currentTime"></p>
+      <h1>Welcome, {{ user.username }}!</h1>
     </div>
 
    <div class="dashboard-grid">
@@ -353,16 +353,48 @@
       }
     }
   </style>
-
   <script>
-    function updateTime() {
-      const timeElement = document.getElementById("currentTime");
-      const now = new Date();
-      timeElement.textContent = now.toLocaleString();
+    let timeoutID;
+    const warningTimeout = 840000; // 14 minutes
+    const timeoutNow = 900000;     // 1 minute and 10 seconds
+
+    function startTimer() {
+        timeoutID = window.setTimeout(timeout, timeoutNow);
     }
 
-    updateTime();
-    setInterval(updateTime, 1000);
-  </script>
-  {% endblock %}
-</div>
+    function resetTimer() {
+        window.clearTimeout(timeoutID);
+        startTimer();
+    }
+
+    function timeout() {
+        window.location.href = "{% url 'logout' %}";
+    }
+
+    function showWarning() {
+        const warningModal = document.createElement('div');
+        warningModal.className = 'timeout-warning';
+        warningModal.innerHTML = `
+            <div class="warning-content">
+                <h3>Session Timeout Warning</h3>
+                <p>Your session will expire in 1 minute due to inactivity.</p>
+                <button onclick="resetTimer()">Stay Logged In</button>
+            </div>
+        `;
+        document.body.appendChild(warningModal);
+    }
+
+    // Add event listeners
+    document.addEventListener('mousemove', resetTimer);
+    document.addEventListener('mousedown', resetTimer);
+    document.addEventListener('keypress', resetTimer);
+    document.addEventListener('touchmove', resetTimer);
+    document.addEventListener('onscroll', resetTimer);
+
+    // Initialize timer
+    startTimer();
+    setTimeout(showWarning, warningTimeout);
+</script>
+</body>
+</html>
+{% endblock %}

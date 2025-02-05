@@ -41,17 +41,32 @@
         </div>
 
         <div class="filter-section">
-          <div class="date-range">
-            <input type="date" id="filterStartDate" onchange="filterReport()">
-            <span>to</span>
-            <input type="date" id="filterEndDate" onchange="filterReport()">
+          <div class="filter-group">
+            <label>Date Range</label>
+            <div class="date-inputs">
+              <input type="date" id="startDate" name="start_date">
+              <span class="date-separator">to</span>
+              <input type="date" id="endDate" name="end_date">
+            </div>
           </div>
-          <div class="filter-options">
-            <select id="statusFilter">
-              <option value="all">All Status</option>
-              <option value="present">Present</option>
-              <option value="absent">Absent</option>
+          
+          <div class="filter-group">
+            <label>Department</label>
+            <select id="departmentFilter">
+              <option value="">All Departments</option>
+              {% for dept in departments %}
+              <option value="{{ dept }}">{{ dept }}</option>
+              {% endfor %}
             </select>
+          </div>
+          
+          <div class="filter-actions">
+            <button class="filter-btn" onclick="applyFilters()">
+              <i class="fas fa-filter"></i> Apply Filters
+            </button>
+            <button class="export-btn" onclick="exportReport()">
+              <i class="fas fa-download"></i> Export Report
+            </button>
           </div>
         </div>
 
@@ -99,35 +114,7 @@
   </div>
 </div>
 
-<!-- Tech Export Modal -->
-<div id="exportModal" class="tech-modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Export Report</h2>
-      <span class="close">&times;</span>
-    </div>
-    <div class="modal-body">
-      <form id="exportForm">
-        <div class="form-group">
-          <label>Select Date Range</label>
-          <div class="date-inputs">
-            <div class="tech-input">
-              <input type="date" name="start_date" required>
-            </div>
-            <span>to</span>
-            <div class="tech-input">
-              <input type="date" name="end_date" required>
-            </div>
-          </div>
-        </div>
-        <button type="submit" class="tech-btn">
-          <span class="btn-glow"></span>
-          <i class="fas fa-download"></i> Download Report
-        </button>
-      </form>
-    </div>
-  </div>
-</div>
+
 
 <style>
   body {
@@ -417,21 +404,70 @@
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     margin-bottom: 20px;
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 20px;
   }
 
-  .date-range {
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-group label {
+    color: #2c3e50;
+    font-weight: 500;
+  }
+
+  .date-inputs {
     display: flex;
     align-items: center;
     gap: 10px;
   }
 
-  .date-range input,
-  .filter-options select {
+  .date-inputs input {
     padding: 8px;
     border: 1px solid #ddd;
     border-radius: 5px;
+    flex: 1;
+  }
+
+  .date-separator {
+    color: #666;
+  }
+
+  .filter-group select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    width: 100%;
+  }
+
+  .filter-actions {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .filter-btn, .export-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .filter-btn {
+    background: #3498db;
+    color: white;
+  }
+
+  .export-btn {
+    background: #4CAF50;
+    color: white;
   }
 
   .date-group {
@@ -489,11 +525,16 @@
     }
     
     .filter-section {
+      grid-template-columns: 1fr;
+    }
+    
+    .filter-actions {
       flex-direction: column;
     }
     
-    .date-range {
-      flex-wrap: wrap;
+    .filter-btn, .export-btn {
+      width: 100%;
+      justify-content: center;
     }
   }
 </style>
@@ -523,5 +564,26 @@
     // Update table based on filters
     console.log("Filtering:", { startDate, endDate, status });
   }
+
+  function applyFilters() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const department = document.getElementById('departmentFilter').value;
+    
+    window.location.href = `?start_date=${startDate}&end_date=${endDate}&department=${department}`;
+  }
+
+  function exportReport() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const department = document.getElementById('departmentFilter').value;
+    
+    window.location.href = `/export-report?start_date=${startDate}&end_date=${endDate}&department=${department}`;
+  }
 </script>
 {% endblock %}
+
+# Session Settings
+SESSION_COOKIE_AGE = 900  # 15 minutes in seconds
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
