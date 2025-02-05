@@ -15,13 +15,6 @@
         <li>
           <a href="{% url 'report' %}"><i class="fas fa-sign-out-alt"></i>Report</a>
         </li>
-        {% if user.is_staff %}
-        <li>
-          <a href="{% url 'settings' %}"
-            ><i class="fas fa-home"></i> Settings</a
-          >
-        </li>
-        {% endif %}
         <li>
           <a href="{% url 'logout' %}"
             ><i class="fas fa-sign-out-alt"></i> Logout</a
