@@ -2,9 +2,15 @@ import cv2
 import torch
 import json
 import os
+import time
+import threading
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
+import base64
+from flask import Flask, Response, jsonify
+import numpy as np
 
+app = Flask(__name__)
 
 class FaceDetect:
     def __init__(self, db_file="backend/face_embeddings.json"):
@@ -61,18 +67,19 @@ class FaceDetect:
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
         boxes, _ = self.mtcnn.detect(img)
+        detected_identities = []
+        detection_times = {}
+
         if boxes is None:
-            return frame  # No faces detected
+            return frame, detected_identities, detection_times  # No faces detected
 
         for box in boxes:
             x1, y1, x2, y2 = map(int, box)
             face_width = x2 - x1
 
-            # Define face distance threshold
             min_face_size = 120
             max_face_size = 250
 
-            # Initialize identity to avoid UnboundLocalError
             identity = "Unknown"
 
             if min_face_size < face_width < max_face_size:
@@ -81,41 +88,82 @@ class FaceDetect:
 
                 if face_tensor is not None:
                     face_tensor = face_tensor.unsqueeze(0) if len(
-                        face_tensor.shape) == 3 else face_tensor  # Ensure correct shape
+                        face_tensor.shape) == 3 else face_tensor
                     identity, dist = self.recognize_face(face_tensor)
 
-                    # 🔹 Print the recognized identity in the console
-                    print(f"Recognized: {identity} | Distance: {dist:.4f}")
+                    if identity != "Unknown":
+                        detected_identities.append(identity)
+                        detection_times[identity] = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 
-                    # 🔹 Display identity on the video frame
                     cv2.putText(frame, f"{identity}", (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-            # Assign color based on identity status
             color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-        return frame
+        return frame, detected_identities, detection_times
 
-    def run_camera(self):
-        """Starts live face detection-based attendance system."""
-        cap = cv2.VideoCapture(0)  # Open webcam (change to camera index if needed)
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            frame = self.process_frame(frame)
-
-            cv2.imshow("Face Recognition System", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to exit
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
+    def encode_image(self, frame):
+        """Convert frame to base64 encoded string."""
+        _, buffer = cv2.imencode('.jpg', frame)
+        img_bytes = buffer.tobytes()
+        return base64.b64encode(img_bytes).decode('utf-8')
 
 
-# Example Usage:
 face_detector = FaceDetect()
-face_detector.run_camera()
+
+# Global variables to store latest frame & detection results
+latest_frame = None
+latest_detected_ids = []
+latest_detection_times = {}
+
+def video_capture():
+    """Continuously capture and process video frames."""
+    global latest_frame, latest_detected_ids, latest_detection_times
+
+    cap = cv2.VideoCapture(0)  # Open default camera
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Process frame for face detection and recognition
+        modified_frame, detected_ids, detection_times = face_detector.process_frame(frame)
+
+        # Store latest results in global variables
+        latest_frame = modified_frame
+        latest_detected_ids = detected_ids
+        latest_detection_times = detection_times
+
+    cap.release()
+
+
+def generate_video_stream():
+    """Generate a continuous video stream with detection results."""
+    global latest_frame, latest_detected_ids, latest_detection_times
+
+    while True:
+        if latest_frame is not None:
+            # Encode the latest frame to base64
+            encoded_frame = face_detector.encode_image(latest_frame)
+
+            # Send the frame and detection results
+            yield f"data: {json.dumps({'image': encoded_frame, 'detected_ids': latest_detected_ids, 'detection_times': latest_detection_times})}\n\n"
+
+        time.sleep(0.1)  # Control frame rate
+
+
+@app.route('/video_stream', methods=['GET'])
+def video_stream():
+    """Stream video with face detection results to the client."""
+    return Response(generate_video_stream(), mimetype='text/event-stream')
+
+
+if __name__ == '__main__':
+    # Start video processing in a separate thread
+    video_thread = threading.Thread(target=video_capture, daemon=True)
+    video_thread.start()
+
+    # Start the Flask API (for sending the processed video stream)
+    app.run(debug=True, use_reloader=False)
