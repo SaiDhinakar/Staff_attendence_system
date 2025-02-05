@@ -14,11 +14,6 @@
             ><i class="fas fa-chart-bar"></i> Reports</a
           >
         </li>
-        {% if user.is_superuser %}
-        <li>
-          <a href="{% url 'settings' %}"><i class="fas fa-cog"></i> Settings</a>
-        </li>
-        {% endif %}
         <li>
           <a href="{% url 'logout' %}"
             ><i class="fas fa-sign-out-alt"></i> Logout</a
@@ -29,126 +24,101 @@
   </div>
 
   <div class="main-content">
-    <div class="header">
-      <h1><i class="fas fa-chart-bar"></i> Attendance Reports</h1>
-      <button class="export-btn" onclick="showExportModal()">
-        <i class="fas fa-download"></i> Export Report
-      </button>
-    </div>
+    <div class="report-container">
+      <div class="content-wrapper">
+        <div class="header">
+          <h1><i class="fas fa-chart-bar"></i> Attendance Report</h1>
+          <button class="export-btn" onclick="showExportModal()">
+            <i class="fas fa-download"></i> Export Report
+          </button>
+        </div>
 
-    <!-- Filters -->
-    <div class="filters">
-      <div class="date-filter">
-        <input type="date" id="filterStartDate" onchange="filterReport()" />
-        <span>to</span>
-        <input type="date" id="filterEndDate" onchange="filterReport()" />
-      </div>
-      <select id="filterStatus" onchange="filterReport()">
-        <option value="all">All Status</option>
-        <option value="present">Present</option>
-        <option value="absent">Absent</option>
-      </select>
-    </div>
+        <div class="filter-section">
+          <div class="date-range">
+            <input type="date" id="filterStartDate" onchange="filterReport()">
+            <span>to</span>
+            <input type="date" id="filterEndDate" onchange="filterReport()">
+          </div>
+          <div class="filter-options">
+            <select id="statusFilter">
+              <option value="all">All Status</option>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+            </select>
+          </div>
+        </div>
 
-    <!-- Summary Cards -->
-    <div class="summary-cards">
-      <div class="summary-card">
-        <i class="fas fa-users"></i>
-        <div>
-          <h3>Total Staff</h3>
-          <p>{{ total_employees }}</p>
+        <div class="report-content">
+          {% for date in attendance_by_date %}
+          <div class="date-group">
+            <div class="date-header">
+              {{ date.grouper|date:"F d, Y" }}
+            </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Staff ID</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>In Time</th>
+                    <th>Out Time</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for record in date.list %}
+                  <tr>
+                    <td>{{ record.emp.emp_id }}</td>
+                    <td>{{ record.emp.emp_name }}</td>
+                    <td>{{ record.emp.department }}</td>
+                    <td>{{ record.time_in|time:"h:i A"|default:"--:--" }}</td>
+                    <td>{{ record.time_out|time:"h:i A"|default:"--:--" }}</td>
+                    <td>
+                      <span class="status {{ record.status }}">
+                        {{ record.status|title }}
+                      </span>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endfor %}
         </div>
       </div>
-      <div class="summary-card">
-        <i class="fas fa-user-check"></i>
-        <div>
-          <h3>Present Today</h3>
-          <p>{{ present_today }}</p>
-        </div>
-      </div>
-      <div class="summary-card">
-        <i class="fas fa-user-times"></i>
-        <div>
-          <h3>Absent Today</h3>
-          <p>{{ absent_today }}</p>
-        </div>
-      </div>
-      <div class="summary-card">
-        <i class="fas fa-user-clock"></i>
-        <div>
-          <h3>Late Today</h3>
-          <p>{{ late_today }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Report Table -->
-    <div class="report-table">
-      {% regroup attendance_data by date as attendance_by_date %} 
-      {% for date in attendance_by_date %}
-      <div class="date-group">
-        <div class="date-header">
-          <h3>{{ date.grouper|date:"F d, Y" }}</h3>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Staff ID</th>
-              <th>Name</th>
-              <th>Department</th>
-              <th>In Time</th>
-              <th>Out Time</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for record in date.list %}
-            <tr>
-              <td>{{ record.emp.emp_id }}</td>
-              <td>{{ record.emp.emp_name }}</td>
-              <td>{{ record.emp.department }}</td>
-              <td>{{ record.time_in|time:"h:i A"|default:"--:--" }}</td>
-              <td>{{ record.time_out|time:"h:i A"|default:"--:--" }}</td>
-              <td>
-                <span class="status {{ record.status }}">
-                  {{ record.status|title }}
-                </span>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endfor %}
     </div>
   </div>
 </div>
 
-<!-- Export Modal -->
-<div id="exportModal" class="modal">
+<!-- Tech Export Modal -->
+<div id="exportModal" class="tech-modal">
   <div class="modal-content">
-    <span class="close">&times;</span>
-    <h2>Export Attendance Report</h2>
-    <form id="exportForm" action="{% url 'export_report' %}" method="GET">
-      <div class="form-group">
-        <label>Select Date Range</label>
-        <div class="date-inputs">
-          <input type="date" name="start_date" required />
-          <span>to</span>
-          <input type="date" name="end_date" required />
+    <div class="modal-header">
+      <h2>Export Report</h2>
+      <span class="close">&times;</span>
+    </div>
+    <div class="modal-body">
+      <form id="exportForm">
+        <div class="form-group">
+          <label>Select Date Range</label>
+          <div class="date-inputs">
+            <div class="tech-input">
+              <input type="date" name="start_date" required>
+            </div>
+            <span>to</span>
+            <div class="tech-input">
+              <input type="date" name="end_date" required>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="form-group">
-        <label>Select Format</label>
-        <select name="format">
-          <option value="csv">CSV</option>
-          <option value="excel">Excel</option>
-        </select>
-      </div>
-      <button type="submit" class="export-btn">
-        <i class="fas fa-download"></i> Download Report
-      </button>
-    </form>
+        <button type="submit" class="tech-btn">
+          <span class="btn-glow"></span>
+          <i class="fas fa-download"></i> Download Report
+        </button>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -386,6 +356,138 @@
     padding: 20px;
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<style>
+  .report-container {
+    background: #f8f9fa;
+    min-height: calc(100vh - 60px);
+    padding: 30px;
+  }
+
+  .content-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .header {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .header h1 {
+    color: #2c3e50;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+  }
+
+  .export-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.3s;
+  }
+
+  .filter-section {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+    display: flex;
+    gap: 20px;
+  }
+
+  .date-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .date-range input,
+  .filter-options select {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+  }
+
+  .date-group {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .date-header {
+    background: #f8f9fa;
+    padding: 15px 20px;
+    color: #2c3e50;
+    font-weight: 500;
+    border-bottom: 1px solid #eee;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th, td {
+    padding: 12px 20px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+  }
+
+  th {
+    background: #f8f9fa;
+    color: #2c3e50;
+    font-weight: 500;
+  }
+
+  .status {
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 0.85em;
+  }
+
+  .status.present {
+    background: #e3fcef;
+    color: #00a854;
+  }
+
+  .status.absent {
+    background: #ffe7e7;
+    color: #ff4d4f;
+  }
+
+  @media (max-width: 768px) {
+    .report-container {
+      padding: 15px;
+    }
+    
+    .filter-section {
+      flex-direction: column;
+    }
+    
+    .date-range {
+      flex-wrap: wrap;
+    }
   }
 </style>
 

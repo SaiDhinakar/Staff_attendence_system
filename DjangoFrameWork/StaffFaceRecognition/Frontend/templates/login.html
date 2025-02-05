@@ -1,22 +1,277 @@
-{% extends 'base.html' %} {% block content %}
+{% extends 'base.html' %}
+{% load static %}
 
-<div class="login-container">
-  <h2>Login</h2>
-  {% if messages %} {% for message in messages %}
-  <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-  {% endfor %} {% endif %}
-  <form method="post">
-    {% csrf_token %}
-    <div class="form-group">
-      <label for="username">Username:</label>
-      <input type="text" name="username" required />
+{% block content %}
+<div class="login-page">
+    <div class="login-container">
+        <div class="face-scan-container">
+            <div class="scan-animation">
+                <div class="face-outline">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="scanning-line"></div>
+            </div>
+            <div class="scan-status">Facial Recognition System</div>
+        </div>
+
+        <div class="login-form">
+            <h2>Staff Login</h2>
+            
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group">
+                    <div class="input-icon">
+                        <i class="fas fa-user"></i>
+                        <input type="text" name="username" required placeholder="Username" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="input-icon">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" name="password" required placeholder="Password" />
+                    </div>
+                </div>
+                <button type="submit" class="login-btn">
+                    <span>Login</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </form>
+        </div>
     </div>
-    <div class="form-group">
-      <label for="password">Password:</label>
-      <input type="password" name="password" required />
-    </div>
-    <button type="submit">Login</button>
-  </form>
 </div>
-{% endblock %}
 
+<style>
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    padding: 20px;
+}
+
+.login-container {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    overflow: hidden;
+    width: 100%;
+    max-width: 600px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    animation: container-fade 0.5s ease-out;
+}
+
+.face-scan-container {
+    background: #f8f9fa;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.scan-animation {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin-bottom: 20px;
+}
+
+.face-outline {
+    width: 100%;
+    height: 100%;
+    border: 3px solid #3498db;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse 2s infinite;
+}
+
+.face-outline i {
+    font-size: 80px;
+    color: #3498db;
+}
+
+.scanning-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: #3498db;
+    animation: scan 2s infinite;
+}
+
+.scan-status {
+    font-size: 1.2em;
+    color: #2c3e50;
+    margin-top: 20px;
+    text-align: center;
+}
+
+.login-form {
+    padding: 40px;
+}
+
+.login-form h2 {
+    color: #2c3e50;
+    margin-bottom: 30px;
+    font-size: 2em;
+    text-align: center;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.input-icon {
+    position: relative;
+}
+
+.input-icon i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #95a5a6;
+}
+
+.input-icon input {
+    width:82%;
+    padding: 15px 15px 15px 45px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+
+.input-icon input:focus {
+    border-color: #3498db;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 15px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s;
+}
+
+.login-btn:hover {
+    background: #2980b9;
+    transform: translateY(-2px);
+}
+
+.alert {
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    animation: alert-slide 0.3s ease-out;
+}
+
+.alert-error {
+    background: #ffe7e7;
+    color: #ff4d4f;
+    border-left: 4px solid #ff4d4f;
+}
+
+.alert-success {
+    background: #e3fcef;
+    color: #00a854;
+    border-left: 4px solid #00a854;
+}
+
+@keyframes container-fade {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes scan {
+    0% {
+        top: 0;
+    }
+    50% {
+        top: 100%;
+    }
+    100% {
+        top: 0;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes alert-slide {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .login-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .face-scan-container {
+        padding: 20px;
+    }
+    
+    .scan-animation {
+        width: 150px;
+        height: 150px;
+    }
+    
+    .face-outline i {
+        font-size: 60px;
+    }
+    
+    .login-form {
+        padding: 20px;
+    }
+}
+</style>
+
+{% endblock %}
