@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
+import sqlite3
+from datetime import datetime
 
 
 app = FastAPI()
@@ -105,15 +107,17 @@ class FaceDetect:
                 face_tensor = self.mtcnn(face_img)
 
                 if face_tensor is not None:
-                    face_tensor = face_tensor.unsqueeze(0) if len(
-                        face_tensor.shape) == 3 else face_tensor
+                    face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
                     identity, dist = self.recognize_face(face_tensor)
 
                     if identity != "Unknown":
                         detected_identities.append(identity)
-                        detection_times[identity] = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+                        detection_time = time.strftime("%H:%M:%S", time.gmtime())
+                        detection_times[identity] = detection_time
 
-                    cv2.putText(frame, f"{identity}", (x1, y1 - 10),
+                        # Save attendance to SQLite
+                        save_attendance(identity, detection_time)
+                        cv2.putText(frame, f"{identity}", (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
             color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
@@ -172,6 +176,41 @@ def generate_video_stream():
             yield f"data: {json.dumps(data)}\n\n"
 
         time.sleep(0.1)  # Control frame rate
+
+
+def save_attendance(emp_id, detection_time):
+    conn = sqlite3.connect("db.sqlite3")  # Connect to the database
+    cursor = conn.cursor()
+
+    # Get current date
+    current_date = datetime.now().strftime("%Y-%m-%d")
+
+    # Check if the employee already has an attendance record for today
+    cursor.execute("SELECT id, time_in, time_out FROM Home_attendance WHERE emp_id = ? AND date = ?",
+                   (emp_id, current_date))
+    record = cursor.fetchone()
+
+    if record:
+        # Record exists, update time_out by appending new time
+        attendance_id, time_in, time_out = record
+
+        if time_out:
+            updated_time_out = f"{time_out},{detection_time}"
+        else:
+            updated_time_out = detection_time
+
+        cursor.execute("UPDATE Home_attendance SET time_out = ? WHERE id = ?", (updated_time_out, attendance_id))
+
+    else:
+        # Insert a new record with the first detection time
+        cursor.execute(
+            "INSERT INTO Home_attendance (date, time_in, time_out, emp_id, status) VALUES (?, ?, ?, ?, NULL)",
+            (current_date, detection_time, detection_time, emp_id))
+
+    conn.commit()
+    conn.close()
+
+
 
 @app.get('/video_stream')
 async def video_stream():
