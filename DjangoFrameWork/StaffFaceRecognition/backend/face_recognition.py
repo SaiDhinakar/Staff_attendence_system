@@ -7,24 +7,27 @@ import threading
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import base64
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
+from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
 
-# Configure CORS
+
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins (change this to specific origins if needed)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 class FaceDetect:
-    def __init__(self, db_file="backend/face_embeddings.json"):
+    def __init__(self, db_file="face_embeddings.json"):
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print(f'Running on device: {self.device}')
 
@@ -35,7 +38,6 @@ class FaceDetect:
         # Load known embeddings
         self.db_file = db_file
         self.embeddings = self.load_embeddings()
-        self.camera = cv2.VideoCapture(0)
 
     def load_embeddings(self):
         """Load face embeddings from a JSON file."""
@@ -51,9 +53,8 @@ class FaceDetect:
         if face_tensor is None:
             return "Unknown", None
 
-        # Ensure tensor has the correct shape before passing to the model
-        if len(face_tensor.shape) == 3:  # If shape is [3, 160, 160], add batch dim
-            face_tensor = face_tensor.unsqueeze(0)  # Shape becomes [1, 3, 160, 160]
+        if len(face_tensor.shape) == 3:  # Ensure correct shape
+            face_tensor = face_tensor.unsqueeze(0)
 
         embedding = self.resnet(face_tensor.to(self.device)).detach().cpu()
 
@@ -65,7 +66,12 @@ class FaceDetect:
                 dist = torch.nn.functional.pairwise_distance(
                     embedding,
                     torch.tensor(db_enc).unsqueeze(0)
-                ).item()
+                )
+
+                if dist.numel() == 1:
+                    dist = dist.item()
+                else:
+                    dist = dist.mean().item()
 
                 if dist < min_dist:
                     min_dist = dist
@@ -121,16 +127,6 @@ class FaceDetect:
         img_bytes = buffer.tobytes()
         return base64.b64encode(img_bytes).decode('utf-8')
 
-    def gen_frames(self):
-        while True:
-            success, frame = self.camera.read()
-            if not success:
-                break
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
 
 face_detector = FaceDetect()
 
@@ -148,7 +144,7 @@ def video_capture():
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
-            break
+            continue  # Skip iteration if no frame is read
 
         # Process frame for face detection and recognition
         modified_frame, detected_ids, detection_times = face_detector.process_frame(frame)
@@ -169,8 +165,11 @@ def generate_video_stream():
             # Encode the latest frame to base64
             encoded_frame = face_detector.encode_image(latest_frame)
 
-            # Send the frame and detection results
-            yield f"data: {json.dumps({'image': encoded_frame, 'detected_ids': latest_detected_ids, 'detection_times': latest_detection_times})}\n\n"
+            # Send the frame and detection results in correct SSE format
+            data = {
+                "image": encoded_frame
+            }
+            yield f"data: {json.dumps(data)}\n\n"
 
         time.sleep(0.1)  # Control frame rate
 
@@ -179,11 +178,11 @@ async def video_stream():
     """Stream video with face detection results to the client."""
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
     video_thread.start()
 
     # Start the FastAPI server
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5600)
