@@ -178,16 +178,6 @@ def generate_video_stream():
 async def video_stream():
     """Stream video with face detection results to the client."""
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
-<<<<<<< HEAD
-=======
-
-@app.get("/video_feed")
-async def video_feed():
-    return Response(
-        content=face_detector.gen_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
->>>>>>> 38f94c7 (Refactor video streaming to use FastAPI; update home template for live feed display)
 
 if __name__ == "__main__":
     # Start video processing in a separate thread
@@ -196,8 +186,4 @@ if __name__ == "__main__":
 
     # Start the FastAPI server
     import uvicorn
-<<<<<<< HEAD
     uvicorn.run(app, host="0.0.0.0", port=8000)
-=======
-    uvicorn.run(app, host="0.0.0.0", port=5000)
->>>>>>> 38f94c7 (Refactor video streaming to use FastAPI; update home template for live feed display)
