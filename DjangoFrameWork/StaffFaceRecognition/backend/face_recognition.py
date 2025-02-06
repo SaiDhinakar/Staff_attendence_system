@@ -83,47 +83,45 @@ class FaceDetect:
         return (identity, min_dist) if min_dist <= threshold else ("Unknown", min_dist)
 
     def process_frame(self, frame):
-        """Detect faces in the frame and trigger recognition if needed."""
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
         boxes, _ = self.mtcnn.detect(img)
-        detected_identities = []
+
+        if boxes is None or len(boxes) == 0:
+            return frame, "Unknown", {}  # No faces detected
+
+        # Find the largest face based on area
+        largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
+
+        x1, y1, x2, y2 = map(int, largest_box)
+        face_width = x2 - x1
+
+        min_face_size = 120
+        max_face_size = 250
+        identity = "Unknown"
         detection_times = {}
 
-        if boxes is None:
-            return frame, detected_identities, detection_times  # No faces detected
+        if min_face_size < face_width < max_face_size:
+            face_img = img.crop((x1, y1, x2, y2))
+            face_tensor = self.mtcnn(face_img)
 
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box)
-            face_width = x2 - x1
+            if face_tensor is not None:
+                face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
+                identity, dist = self.recognize_face(face_tensor)
 
-            min_face_size = 120
-            max_face_size = 250
+                if identity != "Unknown":
+                    detection_time = time.strftime("%H:%M:%S", time.gmtime())
+                    detection_times[identity] = detection_time
 
-            identity = "Unknown"
-
-            if min_face_size < face_width < max_face_size:
-                face_img = img.crop((x1, y1, x2, y2))
-                face_tensor = self.mtcnn(face_img)
-
-                if face_tensor is not None:
-                    face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
-                    identity, dist = self.recognize_face(face_tensor)
-
-                    if identity != "Unknown":
-                        detected_identities.append(identity)
-                        detection_time = time.strftime("%H:%M:%S", time.gmtime())
-                        detection_times[identity] = detection_time
-
-                        # Save attendance to SQLite
-                        save_attendance(identity, detection_time)
-                        cv2.putText(frame, f"{identity}", (x1, y1 - 10),
+                    # Save attendance to SQLite
+                    # save_attendance(identity, detection_time)
+                    cv2.putText(frame, f"{identity}", (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-            color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
-        return frame, detected_identities, detection_times
+        return frame, identity, detection_times
 
     def encode_image(self, frame):
         """Convert frame to base64 encoded string."""
