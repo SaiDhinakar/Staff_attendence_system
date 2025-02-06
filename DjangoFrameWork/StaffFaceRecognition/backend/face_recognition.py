@@ -115,11 +115,11 @@ class FaceDetect:
 
                     # Save attendance to SQLite
                     # save_attendance(identity, detection_time)
-                    cv2.putText(frame, f"{identity}", (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    # cv2.putText(frame, f"{identity}", (x1, y1 - 10),
+                    #             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-        color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        # color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
+        # cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
         return frame, identity, detection_times
 
