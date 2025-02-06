@@ -148,8 +148,9 @@ def export_report(request):
 def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:7000/store_embeddings/"
     payload = {"db_path": db_path, "output_file": output_file}
-    response = requests.post(url, json=payload)
+    response = requests.post(url, json=payload)  # Sending as JSON body
     return response.json()
+
 
 def load_embeddings(output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:7000/load_embeddings/"
@@ -181,8 +182,9 @@ def manage_employees(request):
                 # Handle image uploads
                 if request.FILES.getlist('images'):
                     # Create temporary directory for employee
-                    # temp_dir = os.path.join(settings.BASE_DIR, 'media/temp', emp_id)
-                    temp_dir = r'./media/temp/'+emp_id
+                    temp_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
+                    # temp_dir = os.path.join('../media/temp/', emp_id)
+                    print(temp_dir)
                     os.makedirs(temp_dir, exist_ok=True)
                     # Save images to temporary directory
                     for image in request.FILES.getlist('images'):
@@ -190,15 +192,13 @@ def manage_employees(request):
                         with open(image_path, 'wb+') as destination:
                             for chunk in image.chunks():
                                 destination.write(chunk)
-                    
+                    print('Image written successfully!')
                     # Call store_embeddings API
                     try:
                         embeddings_file = r'../backend/face_embeddings.json'
-                        if not os.path.isfile(embeddings_file):
-                            with open(embeddings_file, 'x') as f:
-                                print('File created')
-                                f.close()
-                        response = store_embeddings(temp_dir, embeddings_file)
+                        print("before api call")
+
+                        response = store_embeddings(settings.MEDIA_ROOT, embeddings_file)
                         print(response)
                         if response.get('status') == 'success':
                             print('Success')
