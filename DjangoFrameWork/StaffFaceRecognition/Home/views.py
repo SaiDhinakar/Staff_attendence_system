@@ -160,80 +160,152 @@ def load_embeddings(output_file="backend/face_embeddings.json"):
 
 @login_required
 @user_passes_test(is_superuser)
-def manage_employees(request):
-    employees = Employee.objects.all()
+# def manage_employees(request):
+#     employees = Employee.objects.all()
     
+#     if request.method == 'POST':
+#         action = request.POST.get('action')
+        
+#         if action == 'add':
+#             try:
+#                 emp_id = request.POST.get('emp_id')
+#                 emp_name = request.POST.get('emp_name')
+#                 department = request.POST.get('department')
+                
+#                 # Create employee
+#                 Employee.objects.create(
+#                     emp_id=emp_id,
+#                     emp_name=emp_name,
+#                     department=department
+#                 )
+                
+#                 # Handle image uploads
+#                 if request.FILES.getlist('images'):
+#                     # Create temporary directory for employee
+#                     temp_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
+#                     # temp_dir = os.path.join('../media/temp/', emp_id)
+#                     print(temp_dir)
+#                     os.makedirs(temp_dir, exist_ok=True)
+#                     # Save images to temporary directory
+#                     for image in request.FILES.getlist('images'):
+#                         image_path = os.path.join(temp_dir, image.name)
+#                         with open(image_path, 'wb+') as destination:
+#                             for chunk in image.chunks():
+#                                 destination.write(chunk)
+#                     print('Image written successfully!')
+#                     # Call store_embeddings API
+#                     try:
+#                         embeddings_file = r'../backend/face_embeddings.json'
+#                         print("before api call")
+
+#                         response = store_embeddings(settings.MEDIA_ROOT, embeddings_file)
+#                         print(response)
+#                         if response.get('status') == 'success':
+#                             print('Success')
+#                             messages.success(request, 'Employee added and embeddings stored successfully')
+#                         else:
+#                             messages.warning(request, 'Employee added but embeddings storage failed')
+                        
+#                         # Clean up temporary directory after processing
+#                         shutil.rmtree(temp_dir)
+                        
+#                     except Exception as e:
+#                         messages.error(request, f'Error processing embeddings: {str(e)}')
+#                         # Keep temp directory in case of error for debugging
+                
+#                 messages.success(request, 'Employee added successfully')
+                
+#             except Exception as e:
+#                 messages.error(request, f'Failed to add employee: {str(e)}')
+        
+#         elif action == 'delete':
+#             emp_id = request.POST.get('emp_id')
+#             Employee.objects.filter(emp_id=emp_id).delete()
+#             messages.success(request, 'Employee deleted successfully')
+            
+#         elif action == 'update':
+#             emp_id = request.POST.get('emp_id')
+#             emp_name = request.POST.get('emp_name')
+#             department = request.POST.get('department')
+            
+#             Employee.objects.filter(emp_id=emp_id).update(
+#                 emp_name=emp_name,
+#                 department=department
+#             )
+#             messages.success(request, 'Employee updated successfully')
+    
+#     context = {
+#         'employees': employees
+#     }
+#     return render(request, 'manage_employees.html', context)
+
+def manage_employees(request):
     if request.method == 'POST':
         action = request.POST.get('action')
-        
         if action == 'add':
             try:
                 emp_id = request.POST.get('emp_id')
                 emp_name = request.POST.get('emp_name')
                 department = request.POST.get('department')
                 
-                # Create employee
-                Employee.objects.create(
-                    emp_id=emp_id,
-                    emp_name=emp_name,
-                    department=department
-                )
-                
-                # Handle image uploads
-                if request.FILES.getlist('images'):
-                    # Create temporary directory for employee
-                    temp_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
-                    # temp_dir = os.path.join('../media/temp/', emp_id)
-                    print(temp_dir)
-                    os.makedirs(temp_dir, exist_ok=True)
-                    # Save images to temporary directory
-                    for image in request.FILES.getlist('images'):
-                        image_path = os.path.join(temp_dir, image.name)
-                        with open(image_path, 'wb+') as destination:
-                            for chunk in image.chunks():
-                                destination.write(chunk)
-                    print('Image written successfully!')
-                    # Call store_embeddings API
-                    try:
-                        embeddings_file = r'../backend/face_embeddings.json'
-                        print("before api call")
-
-                        response = store_embeddings(settings.MEDIA_ROOT, embeddings_file)
-                        print(response)
-                        if response.get('status') == 'success':
-                            print('Success')
-                            messages.success(request, 'Employee added and embeddings stored successfully')
-                        else:
-                            messages.warning(request, 'Employee added but embeddings storage failed')
+                # Check if employee already exists (optional)
+                if Employee.objects.filter(emp_id=emp_id).exists():
+                    messages.error(request, f'Employee with ID {emp_id} already exists.')
+                else:
+                    # Create employee record
+                    Employee.objects.create(
+                        emp_id=emp_id,
+                        emp_name=emp_name,
+                        department=department
+                    )
+                    
+                    # Handle image uploads
+                    images = request.FILES.getlist('images')
+                    if images:
+                        # Create a temporary directory for this employee's images
+                        temp_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
+                        os.makedirs(temp_dir, exist_ok=True)
+                        for image in images:
+                            image_path = os.path.join(temp_dir, image.name)
+                            with open(image_path, 'wb+') as destination:
+                                for chunk in image.chunks():
+                                    destination.write(chunk)
+                        print(f'Images saved to: {temp_dir}')
                         
-                        # Clean up temporary directory after processing
-                        shutil.rmtree(temp_dir)
-                        
-                    except Exception as e:
-                        messages.error(request, f'Error processing embeddings: {str(e)}')
-                        # Keep temp directory in case of error for debugging
-                
-                messages.success(request, 'Employee added successfully')
-                
+                        # Call the store_embeddings API (adjust paths as needed)
+                        try:
+                            embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
+                            print("Before API call to store embeddings")
+                            
+                            response = store_embeddings(settings.MEDIA_ROOT, embeddings_file)
+                            print("Embeddings API response:", response)
+                            
+                            if response.get('status') == 'success':
+                                messages.success(request, 'Employee added and embeddings stored successfully.')
+                            else:
+                                messages.warning(request, 'Employee added but embeddings storage failed.')
+                            
+                            # Clean up temporary directory after processing
+                            shutil.rmtree(temp_dir)
+                        except Exception as e:
+                            messages.error(request, f'Error processing embeddings: {str(e)}')
+                    else:
+                        messages.success(request, 'Employee added successfully.')
             except Exception as e:
                 messages.error(request, f'Failed to add employee: {str(e)}')
-        
+                
         elif action == 'delete':
-            emp_id = request.POST.get('emp_id')
-            Employee.objects.filter(emp_id=emp_id).delete()
-            messages.success(request, 'Employee deleted successfully')
-            
-        elif action == 'update':
-            emp_id = request.POST.get('emp_id')
-            emp_name = request.POST.get('emp_name')
-            department = request.POST.get('department')
-            
-            Employee.objects.filter(emp_id=emp_id).update(
-                emp_name=emp_name,
-                department=department
-            )
-            messages.success(request, 'Employee updated successfully')
+            try:
+                emp_id = request.POST.get('emp_id')
+                Employee.objects.filter(emp_id=emp_id).delete()
+                messages.success(request, 'Employee deleted successfully.')
+            except Exception as e:
+                messages.error(request, f'Failed to delete employee: {str(e)}')
+        
+        # Redirect to avoid resubmission on refresh.
+        return redirect('manage_employees')
     
+    employees = Employee.objects.all()
     context = {
         'employees': employees
     }
