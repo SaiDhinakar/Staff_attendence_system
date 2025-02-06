@@ -6,6 +6,7 @@ from collections import defaultdict
 from facenet_pytorch import MTCNN, InceptionResnetV1
 import torch
 from PIL import Image
+import uvicorn
 
 app = FastAPI()
 
@@ -67,5 +68,4 @@ def load_embeddings(input_file: str = "backend/face_embeddings.json"):
 
 if __name__ == '__main__':
     # Start the FastAPI server
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7000)

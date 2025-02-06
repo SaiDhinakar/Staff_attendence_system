@@ -1,2 +1,6 @@
 DjangoFrameWork/StaffFaceRecognition/backend/dataset
 StaffFaceRecognition/settings.py
+DjangoFrameWork/StaffFaceRecognition/StaffFaceRecognition/__pycache__
+DjangoFrameWork/StaffFaceRecognition/Home/__pycache__
+DjangoFrameWork/StaffFaceRecognition/Home/migrations/__pycache__
+DjangoFrameWork/StaffFaceRecognition/media/1
