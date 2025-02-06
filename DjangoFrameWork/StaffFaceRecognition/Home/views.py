@@ -5,9 +5,14 @@ from django.contrib import messages
 from django.http import HttpResponse
 from django.utils import timezone
 from .models import Employee, Attendance
-from datetime import datetime
+from datetime import datetime, date
 import logging
 import csv
+from django.contrib import messages
+from django.conf import settings
+import os
+import requests
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -16,26 +21,31 @@ def is_superuser(user):
 
 @login_required
 def home_view(request):
-    # Get current date
-    today = timezone.now().date()
-    
-    # Get all employees
-    total_staff = Employee.objects.count()
+    today = date.today()
     
     # Get today's attendance
-    today_attendance = Attendance.objects.filter(date=today).select_related('emp')
+    today_attendance = Attendance.objects.select_related('emp').filter(date=today)
     
-    # Calculate statistics
+    # Calculate present/absent counts
+    total_employees = Employee.objects.count()
     present_count = today_attendance.count()
-    absent_count = total_staff - present_count
+    absent_count = total_employees - present_count
+    
+    # Format attendance data
+    formatted_attendance = [{
+        'emp_id': att.emp.emp_id,
+        'emp_name': att.emp.emp_name,
+        'department': att.emp.department,
+        'in_times': att.get_in_time_array(),
+        'out_times': att.get_out_time_array(),
+        'working_hours': att.calculate_working_hours(),
+        'status': att.get_status()
+    } for att in today_attendance]
     
     context = {
-        'user': request.user,
-        'is_superuser': request.user.is_superuser,
-        'total_staff': total_staff,
         'present_count': present_count,
         'absent_count': absent_count,
-        'attendance_data': today_attendance,
+        'attendance_data': formatted_attendance,
         'current_date': today
     }
     
@@ -54,53 +64,28 @@ def report_view(request):
             date__range=[start_date, end_date]
         )
     
+    # Format report data
+    report_data = [{
+        'date': att.date,
+        'emp_id': att.emp.emp_id,
+        'emp_name': att.emp.emp_name,
+        'department': att.emp.department,
+        'in_times': att.get_in_time_array(),
+        'out_times': att.get_out_time_array(),
+        'working_hours': att.calculate_working_hours(),
+        'status': att.get_status()
+    } for att in attendance_query]
+    
     # Get statistics
     total_employees = Employee.objects.count()
-    today = timezone.now().date()
-    today_attendance = Attendance.objects.filter(date=today)
-    
-    # Calculate present/absent based on time_list
-    present_count = today_attendance.exclude(time_list__isnull=True).exclude(time_list__exact='').count()
-    absent_count = total_employees - present_count
-    
-    # Process attendance records
-    processed_attendance = []
-    for record in attendance_query:
-        times = record.time_list.split(';') if record.time_list else []
-        in_time = times[0] if times else '--:--'
-        out_time = times[-1] if len(times) > 1 else '--:--'
-        
-        # Calculate working hours if both in and out times exist
-        working_hours = 0
-        if len(times) > 1:
-            try:
-                time_in = datetime.strptime(times[0], '%H:%M')
-                time_out = datetime.strptime(times[-1], '%H:%M')
-                diff = time_out - time_in
-                working_hours = round(diff.total_seconds() / 3600, 2)
-            except ValueError:
-                working_hours = 0
-        
-        status = 'Absent'
-        if times:
-            status = 'Present' if len(times) > 1 else 'Present (No Out Time)'
-        
-        processed_attendance.append({
-            'date': record.date,
-            'emp_id': record.emp.emp_id,
-            'emp_name': record.emp.emp_name,
-            'department': record.emp.department,
-            'in_time': in_time,
-            'out_time': out_time,
-            'working_hours': working_hours,
-            'status': status
-        })
+    present_employees = len(set(att['emp_id'] for att in report_data))
     
     context = {
-        'attendance_data': processed_attendance,
+        'attendance_data': report_data,
         'total_employees': total_employees,
-        'present_today': present_count,
-        'absent_today': absent_count
+        'present_employees': present_employees,
+        'start_date': start_date,
+        'end_date': end_date
     }
     
     return render(request, 'report.html', context)
@@ -160,6 +145,18 @@ def export_report(request):
         return redirect('report')
     
 
+def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
+    url = "http://127.0.0.1:7000/store_embeddings/"
+    payload = {"db_path": db_path, "output_file": output_file}
+    response = requests.post(url, json=payload)
+    return response.json()
+
+def load_embeddings(output_file="backend/face_embeddings.json"):
+    url = "http://127.0.0.1:7000/load_embeddings/"
+    params = {"input_file": output_file}
+    response = requests.get(url, params=params)
+    return response.json()
+
 @login_required
 @user_passes_test(is_superuser)
 def manage_employees(request):
@@ -167,18 +164,60 @@ def manage_employees(request):
     
     if request.method == 'POST':
         action = request.POST.get('action')
+        
         if action == 'add':
-            emp_id = request.POST.get('emp_id')
-            emp_name = request.POST.get('emp_name')
-            department = request.POST.get('department')
-            
-            Employee.objects.create(
-                emp_id=emp_id,
-                emp_name=emp_name,
-                department=department
-            )
-            messages.success(request, 'Employee added successfully')
-            
+            try:
+                emp_id = request.POST.get('emp_id')
+                emp_name = request.POST.get('emp_name')
+                department = request.POST.get('department')
+                
+                # Create employee
+                Employee.objects.create(
+                    emp_id=emp_id,
+                    emp_name=emp_name,
+                    department=department
+                )
+                
+                # Handle image uploads
+                if request.FILES.getlist('images'):
+                    # Create temporary directory for employee
+                    # temp_dir = os.path.join(settings.BASE_DIR, 'media/temp', emp_id)
+                    temp_dir = r'./media/temp/'+emp_id
+                    os.makedirs(temp_dir, exist_ok=True)
+                    # Save images to temporary directory
+                    for image in request.FILES.getlist('images'):
+                        image_path = os.path.join(temp_dir, image.name)
+                        with open(image_path, 'wb+') as destination:
+                            for chunk in image.chunks():
+                                destination.write(chunk)
+                    
+                    # Call store_embeddings API
+                    try:
+                        embeddings_file = r'../backend/face_embeddings.json'
+                        if not os.path.isfile(embeddings_file):
+                            with open(embeddings_file, 'x') as f:
+                                print('File created')
+                                f.close()
+                        response = store_embeddings(temp_dir, embeddings_file)
+                        print(response)
+                        if response.get('status') == 'success':
+                            print('Success')
+                            messages.success(request, 'Employee added and embeddings stored successfully')
+                        else:
+                            messages.warning(request, 'Employee added but embeddings storage failed')
+                        
+                        # Clean up temporary directory after processing
+                        shutil.rmtree(temp_dir)
+                        
+                    except Exception as e:
+                        messages.error(request, f'Error processing embeddings: {str(e)}')
+                        # Keep temp directory in case of error for debugging
+                
+                messages.success(request, 'Employee added successfully')
+                
+            except Exception as e:
+                messages.error(request, f'Failed to add employee: {str(e)}')
+        
         elif action == 'delete':
             emp_id = request.POST.get('emp_id')
             Employee.objects.filter(emp_id=emp_id).delete()
@@ -194,8 +233,9 @@ def manage_employees(request):
                 department=department
             )
             messages.success(request, 'Employee updated successfully')
-            
+    
     context = {
         'employees': employees
     }
     return render(request, 'manage_employees.html', context)
+

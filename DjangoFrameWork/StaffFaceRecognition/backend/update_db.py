@@ -64,3 +64,8 @@ def load_embeddings(input_file: str = "backend/face_embeddings.json"):
     with open(input_file, "r") as f:
         embeddings = json.load(f)
     return embeddings
+
+if __name__ == '__main__':
+    # Start the FastAPI server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7000)

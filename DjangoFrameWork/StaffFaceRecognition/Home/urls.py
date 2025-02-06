@@ -7,4 +7,5 @@ urlpatterns = [
     path('manage-employees/', views.manage_employees, name='manage_employees'),
     path('report/', views.report_view, name='report'),
     path('export-report/', views.export_report, name='export_report'),
+    path('store-embeddings/', views.store_embeddings, name='store_embeddings'),
 ]
