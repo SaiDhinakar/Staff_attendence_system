@@ -209,7 +209,6 @@ def save_attendance(emp_id, detection_time, check_type):
     conn.commit()
     conn.close()
 
-####################################  Live Training API ###############################
 class EmbeddingRequest(BaseModel):
     db_path: str
     output_file: str = "backend/face_embeddings.json"
