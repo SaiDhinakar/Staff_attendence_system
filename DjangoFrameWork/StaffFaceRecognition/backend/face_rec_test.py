@@ -82,176 +82,61 @@ class FaceDetect:
         threshold = 0.6
         return (identity, min_dist) if min_dist <= threshold else ("Unknown", min_dist)
 
-    # def process_frame(self, frame):
-    #     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-
-    #     boxes, _ = self.mtcnn.detect(img)
-
-    #     if boxes is None or len(boxes) == 0:
-    #         return frame, "Unknown", {}  # No faces detected
-
-    #     # Find the largest face based on area
-    #     largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
-
-    #     x1, y1, x2, y2 = map(int, largest_box)
-    #     face_width = x2 - x1
-
-    #     min_face_size = 120
-    #     max_face_size = 250
-    #     identity = "Unknown"
-    #     detection_times = {}
-
-    #     if min_face_size < face_width < max_face_size:
-    #         face_img = img.crop((x1, y1, x2, y2))
-    #         face_tensor = self.mtcnn(face_img)
-
-    #         if face_tensor is not None:
-    #             face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
-    #             identity, dist = self.recognize_face(face_tensor)
-
-    #             if identity != "Unknown":
-    #                 detection_time = time.strftime("%H:%M:%S", time.gmtime())
-    #                 detection_times[identity] = detection_time
-
-    #     return frame, identity, detection_times
-
-    # def process_frame(self, frame):
-    #     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    #     boxes, _ = self.mtcnn.detect(img)
-
-    #     if boxes is None or len(boxes) == 0:
-    #         return frame, "Unknown", {}
-
-    #     largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
-    #     x1, y1, x2, y2 = map(int, largest_box)
-    #     face_width = x2 - x1
-
-    #     min_face_size = 120
-    #     max_face_size = 250
-    #     identity = "Unknown"
-    #     detection_times = {}
-    #     confidence = None
-
-    #     if min_face_size < face_width < max_face_size:
-    #         face_img = img.crop((x1, y1, x2, y2))
-    #         face_tensor = self.mtcnn(face_img)
-
-    #         if face_tensor is not None:
-    #             face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
-    #             identity, dist = self.recognize_face(face_tensor)
-                
-    #             if identity != "Unknown":
-    #                 detection_time = time.strftime("%H:%M:%S", time.gmtime())
-    #                 detection_times[identity] = {
-    #                     "time": detection_time,
-    #                     "confidence": 1 - dist  # Convert distance to confidence score
-    #                 }
-
-    #     # Draw rectangle and label on frame
-    #     if boxes is not None:
-    #         for box in boxes:
-    #             x1, y1, x2, y2 = map(int, box)
-    #             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    #             if identity != "Unknown":
-    #                 conf = detection_times[identity]["confidence"]
-    #                 label = f"{identity} ({conf:.2%})"
-    #                 cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-    #     return frame, identity, detection_times
-    
-
-    # def process_frame(self, frame):
-    #     """Update the process_frame method in FaceDetect class"""
-    #     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    #     boxes, _ = self.mtcnn.detect(img)
-        
-    #     detection_data = {
-    #         "identity": "Unknown",
-    #         "detection_times": {},
-    #         "confidence": None
-    #     }
-
-    #     if boxes is not None and len(boxes) > 0:
-    #         largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
-    #         x1, y1, x2, y2 = map(int, largest_box)
-    #         face_width = x2 - x1
-
-    #         min_face_size = 120
-    #         max_face_size = 250
-
-    #         if min_face_size < face_width < max_face_size:
-    #             face_img = img.crop((x1, y1, x2, y2))
-    #             face_tensor = self.mtcnn(face_img)
-
-    #             if face_tensor is not None:
-    #                 face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
-    #                 identity, dist = self.recognize_face(face_tensor)
-                    
-    #                 if identity != "Unknown":
-    #                     detection_time = time.strftime("%H:%M:%S", time.gmtime())
-    #                     confidence = 1 - dist
-    #                     detection_data = {
-    #                         "identity": identity,
-    #                         "detection_times": {
-    #                             identity: {
-    #                                 "time": detection_time,
-    #                                 "confidence": confidence
-    #                             }
-    #                         },
-    #                         "confidence": confidence
-    #                     }
-                        
-    #                     # Draw rectangle and text on frame
-    #                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    #                     label = f"{identity} ({confidence:.2%})"
-    #                     cv2.putText(frame, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-    #     # Update global detection data
-    #     global latest_detection_data
-    #     latest_detection_data = {
-    #         "frame": frame,
-    #         "identity": detection_data["identity"],
-    #         "detection_times": detection_data["detection_times"],
-    #         "confidence": detection_data["confidence"],
-    #         "last_detection": time.time()
-    #     }
-
-    #     return frame, detection_data["identity"], detection_data["detection_times"]
-
 
     def process_frame(self, frame):
-        """Detect, extract, and recognize face."""
+        """Process a video frame, detect faces, and recognize identities."""
+        global latest_detection_data, latest_detection_times  # Ensure both are updated
+
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         boxes, _ = self.mtcnn.detect(img)
-        class_names = ['sai']
 
-        if boxes is None or len(boxes) == 0:
-            return frame, "Unknown"  # No faces detected
+        detection_data = {
+            "identity": "Unknown",
+            "detection_times": {},
+            "confidence": None
+        }
 
-        # Pick the largest detected face
-        largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
-        x1, y1, x2, y2 = map(int, largest_box)
+        if boxes is not None and len(boxes) > 0:
+            largest_box = max(boxes, key=lambda box: (box[2] - box[0]) * (box[3] - box[1]))
+            x1, y1, x2, y2 = map(int, largest_box)
 
-        face_width = x2 - x1
-        min_face_size, max_face_size = 120, 250
-        identity = "Unknown"
-
-        if min_face_size < face_width < max_face_size:
             face_img = img.crop((x1, y1, x2, y2))
             face_tensor = self.mtcnn(face_img)
 
             if face_tensor is not None:
+                face_tensor = face_tensor.unsqueeze(0) if len(face_tensor.shape) == 3 else face_tensor
                 identity, dist = self.recognize_face(face_tensor)
 
-                # Draw name and box
-                text_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-                cv2.putText(frame, f"{class_names[identity-1]}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
+                if identity != "Unknown":
+                    detection_time = time.strftime("%H:%M:%S", time.gmtime())
+                    confidence = 1 - dist
 
-        # Draw bounding box
-        box_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+                    detection_data = {
+                        "identity": identity,
+                        "detection_times": {identity: {"time": detection_time, "confidence": confidence}},
+                        "confidence": confidence
+                    }
 
-        return frame, identity
+                    # ✅ Fix: Update latest_detection_times properly
+                    latest_detection_times[identity] = {
+                        "time": detection_time,
+                        "confidence": confidence
+                    }
+
+                    # Debugging Print Statements
+                    print(f"Detected: {identity}, Confidence: {confidence}")
+                    print(f"Updated latest_detection_times: {latest_detection_times}")
+
+        # ✅ Update global latest_detection_data
+        latest_detection_data = {
+            "frame": frame,
+            "identity": detection_data["identity"],
+            "detection_times": detection_data["detection_times"],
+            "confidence": detection_data["confidence"],
+            "last_detection": time.time()
+        }
+
+        return frame, detection_data["identity"], detection_data["detection_times"]
 
     def encode_image(self, frame):
         """Convert frame to base64 encoded string."""
@@ -278,12 +163,12 @@ def video_capture():
             continue  # Skip iteration if no frame is read
 
         # Process frame for face detection and recognition
-        modified_frame, detected_ids, detection_times = face_detector.process_frame(frame)
+        modified_frame, detected_ids, detection_time = face_detector.process_frame(frame)
 
         # Store latest results in global variables
         latest_frame = modified_frame
         latest_detected_ids = detected_ids
-        latest_detection_times = detection_times
+        latest_detection_time = detection_time
 
     cap.release()
 
@@ -305,14 +190,14 @@ def generate_video_stream():
         time.sleep(0.1)  # Control frame rate
 
 def save_attendance(emp_id, detection_time, check_type):
-    conn = sqlite3.connect(r"D:\Clg-Project\Staff_attendence_system\DjangoFrameWork\StaffFaceRecognition\db.sqlite3")  # Connect to the database
+    conn = sqlite3.connect(r"/mnt/data/PROJECTS/Staff_attendence_system/DjangoFrameWork/StaffFaceRecognition/db.sqlite3")  # Connect to the database
     cursor = conn.cursor()
 
     # Get current date
     current_date = datetime.now().strftime("%Y-%m-%d")
 
     # Check if the employee already has an attendance record for today
-    cursor.execute("SELECT id, time_in, time_out FROM Home_attendance WHERE emp_id = ? AND date = ?",
+    cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
                    (emp_id, current_date))
     record = cursor.fetchone()
 
@@ -325,23 +210,23 @@ def save_attendance(emp_id, detection_time, check_type):
                 updated_time_in = f"{time_in},{detection_time}"
             else:
                 updated_time_in = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_in = ? WHERE id = ?", (updated_time_in, attendance_id))
+            cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
         elif check_type == "check_out":
             if time_out:
                 updated_time_out = f"{time_out},{detection_time}"
             else:
                 updated_time_out = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_out = ? WHERE id = ?", (updated_time_out, attendance_id))
+            cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
 
     else:
         # Insert a new record with the first detection time
         if check_type == "check_in":
             cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in, time_out) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
                 (current_date, emp_id, detection_time, ''))
         elif check_type == "check_out":
             cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in, time_out) VALUES (?, ?, ?, ?)",
+                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
                 (current_date, emp_id, '', detection_time))
 
     conn.commit()
@@ -403,47 +288,27 @@ def load_embeddings(input_file: str = "backend/face_embeddings.json"):
     return embeddings
 
 
-# @app.get('/check-in')
-# async def check_in():
-#     global latest_detection_times
-#     if not latest_detection_times:
-#         raise HTTPException(status_code=400, detail="No face detected")
-
-#     emp_id = list(latest_detection_times.keys())[0]
-#     detection_time = latest_detection_times[emp_id]
-
-#     save_attendance(emp_id, detection_time, "check_in")
-#     return {"status": "success", "message": "Checked in successfully"}
-
-# @app.get('/check-out')
-# async def check_out():
-#     global latest_detection_times
-#     if not latest_detection_times:
-#         raise HTTPException(status_code=400, detail="No face detected")
-
-#     emp_id = list(latest_detection_times.keys())[0]
-#     detection_time = latest_detection_times[emp_id]
-
-#     save_attendance(emp_id, detection_time, "check_out")
-#     return {"status": "success", "message": "Checked out successfully"}
-
-
-# Update API endpoints
 @app.get('/check-in')
 async def check_in():
     global latest_detection_times
+
+    print(f"latest_detection_times: {latest_detection_times}")  # Debugging
+
     if not latest_detection_times:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    emp_id = list(latest_detection_times.keys())[0]
-    detection_data = latest_detection_times[emp_id]
-    
-    if detection_data["confidence"] < 0.4:  # Adjust threshold as needed
+    # ✅ Fix: Properly get the latest detected employee ID
+    emp_id, detection_data = next(iter(latest_detection_times.items()))
+
+    print(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")  # Debugging
+
+    if detection_data["confidence"] < 0.4:
         raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
     save_attendance(emp_id, detection_data["time"], "check_in")
+
     return {
-        "status": "success", 
+        "status": "success",
         "message": "Checked in successfully",
         "employee": {
             "id": emp_id,
@@ -452,21 +317,29 @@ async def check_in():
         }
     }
 
+
+
 @app.get('/check-out')
 async def check_out():
     global latest_detection_times
+
+    print(f"latest_detection_times: {latest_detection_times}")  # Debugging
+
     if not latest_detection_times:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    emp_id = list(latest_detection_times.keys())[0]
-    detection_data = latest_detection_times[emp_id]
-    
-    if detection_data["confidence"] < 0.6:  # Adjust threshold as needed
+    # ✅ Fix: Properly get the latest detected employee ID
+    emp_id, detection_data = next(iter(latest_detection_times.items()))
+
+    print(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")  # Debugging
+
+    if detection_data["confidence"] < 0.5:  # Higher threshold for check-out
         raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
     save_attendance(emp_id, detection_data["time"], "check_out")
+
     return {
-        "status": "success", 
+        "status": "success",
         "message": "Checked out successfully",
         "employee": {
             "id": emp_id,
@@ -474,6 +347,7 @@ async def check_out():
             "time": detection_data["time"]
         }
     }
+
 
 @app.get('/video_stream')
 async def video_stream():
