@@ -46,8 +46,10 @@ def home_view(request):
         'present_count': present_count,
         'absent_count': absent_count,
         'attendance_data': formatted_attendance,
-        'current_date': today
+        'current_date': today,
+        'total_staff':total_employees,
     }
+    print(context)
     
     return render(request, 'home.html', context)
 
@@ -146,14 +148,14 @@ def export_report(request):
     
 
 def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
-    url = "http://127.0.0.1:7000/store_embeddings/"
+    url = "http://127.0.0.1:5600/store_embeddings/"
     payload = {"db_path": db_path, "output_file": output_file}
     response = requests.post(url, json=payload)  # Sending as JSON body
     return response.json()
 
 
 def load_embeddings(output_file="backend/face_embeddings.json"):
-    url = "http://127.0.0.1:7000/load_embeddings/"
+    url = "http://127.0.0.1:5600/load_embeddings/"
     params = {"input_file": output_file}
     response = requests.get(url, params=params)
     return response.json()
