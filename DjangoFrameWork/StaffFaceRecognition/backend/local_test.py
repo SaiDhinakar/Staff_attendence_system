@@ -56,7 +56,7 @@ class FaceRecognizer:
         """Detect, extract, and recognize face."""
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         boxes, _ = self.mtcnn.detect(img)
-        class_names = ['sai']
+        class_names = ['sai']  # Add more names if needed
 
         if boxes is None or len(boxes) == 0:
             return frame, "Unknown"  # No faces detected
@@ -68,6 +68,7 @@ class FaceRecognizer:
         face_width = x2 - x1
         min_face_size, max_face_size = 120, 250
         identity = "Unknown"
+        confidence = 0.0
 
         if min_face_size < face_width < max_face_size:
             face_img = img.crop((x1, y1, x2, y2))
@@ -76,15 +77,26 @@ class FaceRecognizer:
             if face_tensor is not None:
                 identity, dist = self.recognize_face(face_tensor)
 
-                # Draw name and box
+                # Convert identity to display name
+                if identity != "Unknown" and identity in class_names:
+                    display_name = identity
+                else:
+                    display_name = "Unknown"
+
+                # Confidence calculation
+                confidence = round((1 - dist) * 100, 2) if dist is not None else 0.0
+
+                # Draw name, confidence, and box
                 text_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-                cv2.putText(frame, f"{class_names[identity-1]}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
+                label = f"{display_name} ({confidence}%)"
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
 
         # Draw bounding box
         box_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
         cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
         return frame, identity
+
 
 def main():
     recognizer = FaceRecognizer()
