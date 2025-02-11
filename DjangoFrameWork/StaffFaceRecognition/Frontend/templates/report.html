@@ -68,43 +68,41 @@
         </div>
 
         <div class="report-content">
-          {% regroup attendance_data by date as attendance_by_date %}
-          {% for date_group in attendance_by_date %}
-          <div class="date-group">
-            <div class="date-header">
-              {{ date.grouper|date:"F d, Y" }}
-            </div>
-            <div class="table-wrapper">
-              <table class="report-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Staff ID</th>
-                        <th>Name</th>
-                        <th>Department</th>
-                        <th>In Time</th>
-                        <th>Out Time</th>
-                        <th>Working Hours</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for record in attendance_data %}
-                    <tr>
-                        <td>{{ record.date|date:"d/m/Y" }}</td>
-                        <td>{{ record.emp_id }}</td>
-                        <td>{{ record.emp_name }}</td>
-                        <td>{{ record.department }}</td>
-                        <td>{{ record.time_in_list|default:"--:--" }}</td>
-                        <td>{{ record.time_out_list|default:"--:--" }}</td>
-                        <td>{{ record.working_hours|floatformat:2 }} hrs</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
+              <div class="table-wrapper">
+                  <table class="report-table">
+                      <thead>
+                          <tr>
+                              <th>Date</th>
+                              <th>Staff ID</th>
+                              <th>Name</th>
+                              <th>Department</th>
+                              <th>In Time</th>
+                              <th>Out Time</th>
+                              <th>Working Hours</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                        {% for record in attendance_data %}
+                        <tr>
+                          <td>{{ record.date }}</td>
+                          <td>{{ record.emp_id }}</td>
+                          <td>{{ record.emp_name }}</td>
+                          <td>{{ record.department }}</td>
+                          <td>{{ record.time_in_list|default:"--:--" }}</td>
+                          <td>{{ record.time_out_list|default:"--:--" }}</td>
+                          <td>{{ record.working_hours|default:"--:--" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                          <td colspan="7" class="no-data">No attendance records</td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                  </table>
+              </div>
           </div>
-          {% endfor %}
-        </div>
+         
+      </div>
       </div>
     </div>
   </div>

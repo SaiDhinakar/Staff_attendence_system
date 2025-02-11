@@ -68,7 +68,6 @@ def report_view(request):
         attendance_query = attendance_query.filter(
             emp__department=department
         )
-    
     # Get unique departments for filter dropdown
     departments = Employee.objects.values_list('department', flat=True).distinct()
     
@@ -90,62 +89,8 @@ def report_view(request):
         'end_date': end_date,
         'department': department
     }
-    
+    for k,v in context.items(): print(k, v)
     return render(request, 'report.html', context)
-
-# @login_required
-# def export_report(request):
-#     try:
-#         # Get filter parameters
-#         start_date = request.GET.get('start_date')
-#         end_date = request.GET.get('end_date')
-        
-#         # Query attendance data
-#         attendance_query = Attendance.objects.select_related('emp').all()
-        
-#         # Apply date filters if provided
-#         if start_date and end_date:
-#             attendance_query = attendance_query.filter(
-#                 date__range=[start_date, end_date]
-#             )
-        
-#         # Prepare response
-#         response = HttpResponse(content_type='text/csv')
-#         filename = "attendance_report"
-#         if start_date and end_date:
-#             filename += f"_{start_date}_to_{end_date}"
-#         response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
-        
-#         # Write CSV data
-#         writer = csv.writer(response)
-#         writer.writerow([
-#             'Date', 
-#             'Employee ID', 
-#             'Employee Name', 
-#             'Department',
-#             'In Time', 
-#             'Out Time', 
-#             'Status'
-#         ])
-        
-#         # Add attendance records
-#         for record in attendance_query:
-#             writer.writerow([
-#                 record.date.strftime('%Y-%m-%d'),
-#                 record.emp.emp_id,
-#                 record.emp.emp_name,
-#                 record.emp.department,
-#                 record.time_in_list.strftime('%I:%M %p') if record.time_in else '--:--',
-#                 record.time_out_list.strftime('%I:%M %p') if record.time_out else '--:--',
-#                 record.status.title()
-#             ])
-        
-#         return response
-        
-#     except Exception as e:
-#         logger.error(f"Export failed: {str(e)}")
-#         messages.error(request, 'Failed to export report')
-#         return redirect('report')
 
 @login_required
 def export_report(request):
