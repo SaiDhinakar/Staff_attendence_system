@@ -38,7 +38,7 @@ def home_view(request):
         'department': att.emp.department,
         'time_in_list': att.get_in_time()[0],
         'time_out_list': att.get_out_time()[-1],
-        'working_hours': att.get_working_hours(),
+        'working_hours': get_working_hours(att.get_in_time()[0],att.get_out_time()[-1] ),#att.get_working_hours(),
         'status': att.get_status()
     } for att in today_attendance]
     
@@ -49,8 +49,16 @@ def home_view(request):
         'total_staff':total_employees,
     }
     print(context)
-    
     return render(request, 'home.html', context)
+
+def get_working_hours(in_time, out_time):
+    hour = int(out_time.split(':')[0]) - int(in_time.split(':')[0])
+    min = int(out_time.split(':')[1]) - int(in_time.split(':')[1])
+    if min < 0:
+        hour -= 1
+        min += 60
+    print(hour, min)
+    return hour + min/60
 
 @login_required
 def report_view(request):

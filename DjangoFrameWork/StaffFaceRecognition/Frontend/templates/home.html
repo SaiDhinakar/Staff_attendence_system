@@ -90,6 +90,7 @@
               <th>Department</th>
               <th>In Time</th>
               <th>Out Time</th>
+              <th>Working Hours</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -102,6 +103,7 @@
               <td>{{ record.department }}</td>
               <td>{{ record.time_in_list|default:"--:--" }}</td>
               <td>{{ record.time_out_list|default:"--:--" }}</td>
+              <td>{{ record.working_hours|default:"--:--" }}</td>
               <td><span class="status {{ record.status|lower }}">{{ record.status|title }}</span></td>
             </tr>
             {% empty %}

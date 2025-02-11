@@ -108,7 +108,7 @@ class FaceDetect:
                 identity, dist = self.recognize_face(face_tensor)
 
                 if identity != "Unknown":
-                    detection_time = time.strftime("%H:%M:%S", time.gmtime())
+                    detection_time = time.strftime("%H:%M:%S", time.localtime())
                     confidence = 1 - dist
 
                     detection_data = {
@@ -133,7 +133,7 @@ class FaceDetect:
             "identity": detection_data["identity"],
             "detection_times": detection_data["detection_times"],
             "confidence": detection_data["confidence"],
-            "last_detection": time.time()
+            "last_detection": time.strftime("%H:%M:%S", time.localtime())
         }
 
         return frame, detection_data["identity"], detection_data["detection_times"]
