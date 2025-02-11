@@ -35,9 +35,6 @@
       <div class="content-wrapper">
         <div class="header">
           <h1><i class="fas fa-chart-bar"></i> Attendance Report</h1>
-          <button class="export-btn" onclick="showExportModal()">
-            <i class="fas fa-download"></i> Export Report
-          </button>
         </div>
 
         <div class="filter-section">
@@ -71,7 +68,8 @@
         </div>
 
         <div class="report-content">
-          {% for date in attendance_by_date %}
+          {% regroup attendance_data by date as attendance_by_date %}
+          {% for date_group in attendance_by_date %}
           <div class="date-group">
             <div class="date-header">
               {{ date.grouper|date:"F d, Y" }}
@@ -87,7 +85,6 @@
                         <th>In Time</th>
                         <th>Out Time</th>
                         <th>Working Hours</th>
-                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,7 +97,6 @@
                         <td>{{ record.time_in_list|default:"--:--" }}</td>
                         <td>{{ record.time_out_list|default:"--:--" }}</td>
                         <td>{{ record.working_hours|floatformat:2 }} hrs</td>
-                        <td><span class="status {{ record.status|lower }}">{{ record.status }}</span></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -578,12 +574,12 @@
     const endDate = document.getElementById('endDate').value;
     const department = document.getElementById('departmentFilter').value;
     
-    window.location.href = `/export-report?start_date=${startDate}&end_date=${endDate}&department=${department}`;
-  }
+    let url = `/export-report?start_date=${startDate}&end_date=${endDate}`;
+    if (department) {
+        url += `&department=${department}`;
+    }
+    
+    window.location.href = url;
+}
 </script>
 {% endblock %}
-
-# Session Settings
-SESSION_COOKIE_AGE = 900  # 15 minutes in seconds
-SESSION_SAVE_EVERY_REQUEST = True
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True

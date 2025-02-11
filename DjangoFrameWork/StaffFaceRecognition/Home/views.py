@@ -36,10 +36,9 @@ def home_view(request):
         'emp_id': att.emp.emp_id,
         'emp_name': att.emp.emp_name,
         'department': att.emp.department,
-        'time_in_list': att.get_in_time()[0],
-        'time_out_list': att.get_out_time()[-1],
-        'working_hours': get_working_hours(att.get_in_time()[0],att.get_out_time()[-1] ),#att.get_working_hours(),
-        'status': att.get_status()
+        'time_in_list': att.get_in_time()[0] if att.get_in_time() else '--:--',
+        'time_out_list': att.get_out_time()[-1] if att.get_out_time() else '--:--',
+        'working_hours': att.get_working_hours(),
     } for att in today_attendance]
     
     context = {
@@ -51,19 +50,11 @@ def home_view(request):
     print(context)
     return render(request, 'home.html', context)
 
-def get_working_hours(in_time, out_time):
-    hour = int(out_time.split(':')[0]) - int(in_time.split(':')[0])
-    min = int(out_time.split(':')[1]) - int(in_time.split(':')[1])
-    if min < 0:
-        hour -= 1
-        min += 60
-    print(hour, min)
-    return hour + min/60
-
 @login_required
 def report_view(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
+    department = request.GET.get('department')
     
     # Query attendance data
     attendance_query = Attendance.objects.select_related('emp').all()
@@ -73,31 +64,88 @@ def report_view(request):
             date__range=[start_date, end_date]
         )
     
+    if department:
+        attendance_query = attendance_query.filter(
+            emp__department=department
+        )
+    
+    # Get unique departments for filter dropdown
+    departments = Employee.objects.values_list('department', flat=True).distinct()
+    
     # Format report data
-    report_data = [{
+    attendance_data = [{
         'date': att.date,
         'emp_id': att.emp.emp_id,
         'emp_name': att.emp.emp_name,
         'department': att.emp.department,
-        'time_in_list': att.get_in_time(),
-        'time_out_list': att.get_out_time(),
+        'time_in_list': att.get_in_time()[0] if att.get_in_time() else '--:--',
+        'time_out_list': att.get_out_time()[-1] if att.get_out_time() else '--:--',
         'working_hours': att.get_working_hours(),
-        'status': att.get_status()
     } for att in attendance_query]
     
-    # Get statistics
-    total_employees = Employee.objects.count()
-    present_employees = len(set(att['emp_id'] for att in report_data))
-    
     context = {
-        'attendance_data': report_data,
-        'total_employees': total_employees,
-        'present_employees': present_employees,
+        'attendance_data': attendance_data,
+        'departments': departments,
         'start_date': start_date,
-        'end_date': end_date
+        'end_date': end_date,
+        'department': department
     }
-    print(context)
+    
     return render(request, 'report.html', context)
+
+# @login_required
+# def export_report(request):
+#     try:
+#         # Get filter parameters
+#         start_date = request.GET.get('start_date')
+#         end_date = request.GET.get('end_date')
+        
+#         # Query attendance data
+#         attendance_query = Attendance.objects.select_related('emp').all()
+        
+#         # Apply date filters if provided
+#         if start_date and end_date:
+#             attendance_query = attendance_query.filter(
+#                 date__range=[start_date, end_date]
+#             )
+        
+#         # Prepare response
+#         response = HttpResponse(content_type='text/csv')
+#         filename = "attendance_report"
+#         if start_date and end_date:
+#             filename += f"_{start_date}_to_{end_date}"
+#         response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+        
+#         # Write CSV data
+#         writer = csv.writer(response)
+#         writer.writerow([
+#             'Date', 
+#             'Employee ID', 
+#             'Employee Name', 
+#             'Department',
+#             'In Time', 
+#             'Out Time', 
+#             'Status'
+#         ])
+        
+#         # Add attendance records
+#         for record in attendance_query:
+#             writer.writerow([
+#                 record.date.strftime('%Y-%m-%d'),
+#                 record.emp.emp_id,
+#                 record.emp.emp_name,
+#                 record.emp.department,
+#                 record.time_in_list.strftime('%I:%M %p') if record.time_in else '--:--',
+#                 record.time_out_list.strftime('%I:%M %p') if record.time_out else '--:--',
+#                 record.status.title()
+#             ])
+        
+#         return response
+        
+#     except Exception as e:
+#         logger.error(f"Export failed: {str(e)}")
+#         messages.error(request, 'Failed to export report')
+#         return redirect('report')
 
 @login_required
 def export_report(request):
@@ -105,15 +153,29 @@ def export_report(request):
         # Get filter parameters
         start_date = request.GET.get('start_date')
         end_date = request.GET.get('end_date')
+        department = request.GET.get('department')  # Added department filter to match report_view
         
         # Query attendance data
         attendance_query = Attendance.objects.select_related('emp').all()
         
-        # Apply date filters if provided
+        # Apply filters if provided
         if start_date and end_date:
-            attendance_query = attendance_query.filter(
-                date__range=[start_date, end_date]
-            )
+            try:
+                # Convert string dates to datetime objects
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+                attendance_query = attendance_query.filter(date__range=[start_date, end_date])
+            except ValueError:
+                messages.error(request, 'Invalid date format. Use YYYY-MM-DD')
+                return redirect('report')
+
+        if department:
+            attendance_query = attendance_query.filter(emp__department=department)
+        
+        # Check if any records exist
+        if not attendance_query.exists():
+            messages.warning(request, 'No attendance records found for the selected period')
+            return redirect('report')
         
         # Prepare response
         response = HttpResponse(content_type='text/csv')
@@ -131,28 +193,30 @@ def export_report(request):
             'Department',
             'In Time', 
             'Out Time', 
-            'Status'
+            'Working Hours'
         ])
         
         # Add attendance records
         for record in attendance_query:
+            in_time = record.get_in_time()[0] if record.get_in_time() else '--:--'
+            out_time = record.get_out_time()[-1] if record.get_out_time() else '--:--'
+            
             writer.writerow([
                 record.date.strftime('%Y-%m-%d'),
                 record.emp.emp_id,
                 record.emp.emp_name,
                 record.emp.department,
-                record.time_in.strftime('%I:%M %p') if record.time_in else '--:--',
-                record.time_out.strftime('%I:%M %p') if record.time_out else '--:--',
-                record.status.title()
+                in_time,
+                out_time,
+                record.get_working_hours(),
             ])
         
         return response
         
     except Exception as e:
-        logger.error(f"Export failed: {str(e)}")
+        logger.error(f"Export failed: {str(e)}", exc_info=True)
         messages.error(request, 'Failed to export report')
         return redirect('report')
-    
 
 def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:5600/store_embeddings/"
