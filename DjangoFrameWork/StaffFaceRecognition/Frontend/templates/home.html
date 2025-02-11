@@ -97,11 +97,11 @@
             {% for record in attendance_data %}
             <tr>
               <td>{{ forloop.counter }}</td>
-              <td>{{ record.emp.emp_id }}</td>
-              <td>{{ record.emp.emp_name }}</td>
-              <td>{{ record.emp.department }}</td>
-              <td>{{ record.time_in|time:"h:i A"|default:"--:--" }}</td>
-              <td>{{ record.time_out|time:"h:i A"|default:"--:--" }}</td>
+              <td>{{ record.emp_id }}</td>
+              <td>{{ record.emp_name }}</td>
+              <td>{{ record.department }}</td>
+              <td>{{ record.time_in_list|default:"--:--" }}</td>
+              <td>{{ record.time_out_list|default:"--:--" }}</td>
               <td><span class="status {{ record.status|lower }}">{{ record.status|title }}</span></td>
             </tr>
             {% empty %}

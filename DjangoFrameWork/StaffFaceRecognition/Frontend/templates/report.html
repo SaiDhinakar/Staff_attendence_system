@@ -97,8 +97,8 @@
                         <td>{{ record.emp_id }}</td>
                         <td>{{ record.emp_name }}</td>
                         <td>{{ record.department }}</td>
-                        <td>{{ record.in_time|default:"--:--" }}</td>
-                        <td>{{ record.out_time|default:"--:--" }}</td>
+                        <td>{{ record.time_in_list|default:"--:--" }}</td>
+                        <td>{{ record.time_out_list|default:"--:--" }}</td>
                         <td>{{ record.working_hours|floatformat:2 }} hrs</td>
                         <td><span class="status {{ record.status|lower }}">{{ record.status }}</span></td>
                     </tr>

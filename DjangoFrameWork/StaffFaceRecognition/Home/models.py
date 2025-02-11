@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Employee(models.Model):
     emp_id = models.CharField(max_length=10, primary_key=True)
@@ -18,10 +18,10 @@ class Attendance(models.Model):
     time_out_list = models.TextField(blank=True, null=True)
     
     def get_in_time(self):
-        return self.time_in_list.split(';') if self.time_in_list else []
+        return self.time_in_list.split(',') if self.time_in_list else []
         
     def get_out_time(self):
-        return self.time_out_list.split(';') if self.time_out_list else []
+        return self.time_out_list.split(',') if self.time_out_list else []
         
     def get_working_hours(self):
         in_times = self.get_in_time()
@@ -32,18 +32,36 @@ class Attendance(models.Model):
             try:
                 in_dt = datetime.strptime(in_times[i].strip(), '%H:%M')
                 out_dt = datetime.strptime(out_times[i].strip(), '%H:%M')
+                
+                # Handle midnight crossover
+                if out_dt < in_dt:
+                    # Add 24 hours to out_time if it's less than in_time
+                    out_dt = out_dt.replace() + timedelta(days=1)
+                    
                 diff = out_dt - in_dt
                 total_hours += diff.seconds / 3600
             except ValueError:
                 continue
                 
         return round(total_hours, 2)
-    
+
     def get_status(self):
         in_times = self.get_in_time()
-        if not in_times:
-            return 'Absent'
         out_times = self.get_out_time()
+        
+        # Check if there are any valid in_times
+        valid_in_time = False
+        for in_time in in_times:
+            try:
+                datetime.strptime(in_time.strip(), '%H:%M')
+                valid_in_time = True
+                break
+            except ValueError:
+                continue
+        
+        if not in_times or not valid_in_time:
+            return 'Absent'
+        
         if len(in_times) > len(out_times):
             return 'Present (No Out Time)'
         return 'Present'

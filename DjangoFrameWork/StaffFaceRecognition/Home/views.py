@@ -36,15 +36,14 @@ def home_view(request):
         'emp_id': att.emp.emp_id,
         'emp_name': att.emp.emp_name,
         'department': att.emp.department,
-        'in_times': att.get_in_time_array(),
-        'out_times': att.get_out_time_array(),
-        'working_hours': att.calculate_working_hours(),
+        'time_in_list': att.get_in_time()[0],
+        'time_out_list': att.get_out_time()[-1],
+        'working_hours': att.get_working_hours(),
         'status': att.get_status()
     } for att in today_attendance]
     
     context = {
         'present_count': present_count,
-        'absent_count': absent_count,
         'attendance_data': formatted_attendance,
         'current_date': today,
         'total_staff':total_employees,
@@ -72,9 +71,9 @@ def report_view(request):
         'emp_id': att.emp.emp_id,
         'emp_name': att.emp.emp_name,
         'department': att.emp.department,
-        'in_times': att.get_in_time_array(),
-        'out_times': att.get_out_time_array(),
-        'working_hours': att.calculate_working_hours(),
+        'time_in_list': att.get_in_time(),
+        'time_out_list': att.get_out_time(),
+        'working_hours': att.get_working_hours(),
         'status': att.get_status()
     } for att in attendance_query]
     
@@ -89,7 +88,7 @@ def report_view(request):
         'start_date': start_date,
         'end_date': end_date
     }
-    
+    print(context)
     return render(request, 'report.html', context)
 
 @login_required
