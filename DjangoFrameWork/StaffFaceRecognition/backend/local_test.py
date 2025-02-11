@@ -77,23 +77,19 @@ class FaceRecognizer:
             if face_tensor is not None:
                 identity, dist = self.recognize_face(face_tensor)
 
-                # Convert identity to display name
-                if identity != "Unknown" and identity in class_names:
-                    display_name = identity
-                else:
-                    display_name = "Unknown"
+                # Confidence calculation (Ensure dist is valid)
+                confidence = round((1 - dist) * 100, 2) if dist is not None and dist <= 1.0 else 0.0
 
-                # Confidence calculation
-                confidence = round((1 - dist) * 100, 2) if dist is not None else 0.0
+                # Display Name and Confidence
+                label = f"{identity} ({confidence}%)" if identity != "Unknown" else "Unknown"
 
-                # Draw name, confidence, and box
+                # Draw name and confidence on frame
                 text_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-                label = f"{display_name} ({confidence}%)"
                 cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2)
 
-        # Draw bounding box
-        box_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+            # Draw bounding box
+            box_color = (0, 255, 0) if identity != "Unknown" else (0, 0, 255)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
         return frame, identity
 
