@@ -119,8 +119,17 @@
     document.addEventListener("DOMContentLoaded", function () {
       const videoFrame = document.getElementById("video-frame");
 
+      let IP;
+      fetch('/api/get_env/')
+        .then(response => response.json())
+        .then(env => {
+            IP = env.IP;
+        })
+        .catch(error => console.error('Error Fetching environment variable:',error));
+
+
       function startStream() {
-        const eventSource = new EventSource("http://0.0.0.0:5600/video_stream");
+        const eventSource = new EventSource(`http://${IP}:5600/video_stream`);
 
         eventSource.onmessage = function (event) {
           try {
@@ -148,13 +157,13 @@
 
     // Check-In and Check-Out Functions
     async function checkIn() {
-    const response = await fetch('http://127.0.0.1:5600/check-in');
+    const response = await fetch(`http://${IP}:5600/check-in`);
     const result = await response.json();
     console.log(result);
     }
 
     async function checkOut() {
-        const response = await fetch('http://127.0.0.1:5600/check-out');
+        const response = await fetch(`http://${IP}:5600/check-out`);
         const result = await response.json();
         console.log(result);
     }

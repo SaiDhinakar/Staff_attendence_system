@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from .models import Employee, Attendance
 from datetime import datetime, date
@@ -13,8 +13,18 @@ from django.conf import settings
 import os
 import requests
 import shutil
+from dotenv import dotenv_values
 
 logger = logging.getLogger(__name__)
+
+config = dotenv_values("./.env")
+IP = config.get("IP")
+
+def get_env_values(request):
+    env_vars = {
+        "IP": IP,
+    }
+    return JsonResponse(env_vars, safe = False)
 
 def is_superuser(user):
     return user.is_superuser
