@@ -28,7 +28,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class FaceDetect:
     def __init__(self, db_file="face_embeddings.json"):
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -144,17 +143,16 @@ class FaceDetect:
         img_bytes = buffer.tobytes()
         return base64.b64encode(img_bytes).decode('utf-8')
 
-
 face_detector = FaceDetect()
 
 latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
 
-
 def video_capture():
     """Continuously capture and process video frames from Jetson Nano camera."""
     global latest_frame, latest_detected_ids, latest_detection_times
+
 
     pipeline = (
         "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
@@ -164,7 +162,7 @@ def video_capture():
 
     # Open the camera stream
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    # cap = cv2.VideoCapture(0)
+
     if not cap.isOpened():
         print("Error: Could not open camera stream.")
         return
@@ -192,7 +190,6 @@ def video_capture():
     finally:
         cap.release()
 
-
 def generate_video_stream():
     """Generate a continuous video stream with detection results."""
     global latest_frame, latest_detected_ids, latest_detection_times
@@ -210,10 +207,8 @@ def generate_video_stream():
 
         time.sleep(0.1)  # Control frame rate
 
-
 def save_attendance(emp_id, detection_time, check_type):
-    conn = sqlite3.connect(
-        r"/mnt/data/PROJECTS/Staff_attendence_system/DjangoFrameWork/StaffFaceRecognition/db.sqlite3")  # Connect to the database
+    conn = sqlite3.connect(r"/mnt/data/PROJECTS/Staff_attendence_system/DjangoFrameWork/StaffFaceRecognition/db.sqlite3")  # Connect to the database
     cursor = conn.cursor()
 
     # Get current date
@@ -239,8 +234,7 @@ def save_attendance(emp_id, detection_time, check_type):
                 updated_time_out = f"{time_out},{detection_time}"
             else:
                 updated_time_out = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?",
-                           (updated_time_out, attendance_id))
+            cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
 
     else:
         # Insert a new record with the first detection time
@@ -255,7 +249,6 @@ def save_attendance(emp_id, detection_time, check_type):
 
     conn.commit()
     conn.close()
-
 
 class EmbeddingRequest(BaseModel):
     db_path: str
@@ -343,6 +336,7 @@ async def check_in():
     }
 
 
+
 @app.get('/check-out')
 async def check_out():
     global latest_detection_times
@@ -378,7 +372,6 @@ async def video_stream():
     """Stream video with face detection results to the client."""
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
-
 if __name__ == '__main__':
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
@@ -386,5 +379,4 @@ if __name__ == '__main__':
 
     # Start the FastAPI server
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=5600)

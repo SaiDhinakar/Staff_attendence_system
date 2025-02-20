@@ -120,7 +120,7 @@
       const videoFrame = document.getElementById("video-frame");
 
       function startStream() {
-        const eventSource = new EventSource("http://127.0.0.1:5600/video_stream");
+        const eventSource = new EventSource("http://0.0.0.0:5600/video_stream");
 
         eventSource.onmessage = function (event) {
           try {
