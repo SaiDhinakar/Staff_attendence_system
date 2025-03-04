@@ -243,7 +243,7 @@ def save_attendance(emp_id, detection_time, check_type):
 
         # Check if the employee already has an attendance record for today
         cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
-                       (emp_id, current_date))
+                    (emp_id, current_date))
         record = cursor.fetchone()
 
         if record:
@@ -255,15 +255,13 @@ def save_attendance(emp_id, detection_time, check_type):
                     updated_time_in = f"{time_in},{detection_time}"
                 else:
                     updated_time_in = detection_time
-                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?",
-                               (updated_time_in, attendance_id))
+                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
             elif check_type == "check_out":
                 if time_out:
                     updated_time_out = f"{time_out},{detection_time}"
                 else:
                     updated_time_out = detection_time
-                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?",
-                               (updated_time_out, attendance_id))
+                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
 
         else:
             # Insert a new record with the first detection time
@@ -278,8 +276,8 @@ def save_attendance(emp_id, detection_time, check_type):
 
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Database error: {e}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
+            print(f"Database error: {e}")
+            raise HTTPException(status_code=500, detail="Database connection failed")
     finally:
         if conn:
             conn.close()
@@ -404,7 +402,7 @@ async def check_out():
 @app.get('/video_stream')
 async def video_stream():
     """Stream video with face detection results to the client."""
-    return StreamingResponse(generate_video_stream(), media_type='multipart/x-mixed-replace; boundary=frame')
+    return StreamingHTTPResponse(generate_video_stream(), media_type='text/event-stream')
 
 
 
