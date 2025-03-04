@@ -153,16 +153,16 @@ def video_capture():
     """Continuously capture and process video frames from Jetson Nano camera."""
     global latest_frame, latest_detected_ids, latest_detection_times
 
-
-    pipeline = (
-        "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
-        "nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! "
-        "videoconvert ! video/x-raw, format=BGR ! appsink"
-    )
+    #
+    # pipeline = (
+    #     "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
+    #     "nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! "
+    #     "videoconvert ! video/x-raw, format=BGR ! appsink"
+    # )
 
     # Open the camera stream
-    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-
+    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Error: Could not open camera stream.")
         return
@@ -208,47 +208,54 @@ def generate_video_stream():
         time.sleep(0.1)  # Control frame rate
 
 def save_attendance(emp_id, detection_time, check_type):
-    conn = sqlite3.connect(r"/mnt/data/PROJECTS/Staff_attendence_system/DjangoFrameWork/StaffFaceRecognition/db.sqlite3")  # Connect to the database
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(r"../db.sqlite3")
+        cursor = conn.cursor()
 
-    # Get current date
-    current_date = datetime.now().strftime("%Y-%m-%d")
+        # Get current date
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
-    # Check if the employee already has an attendance record for today
-    cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
-                   (emp_id, current_date))
-    record = cursor.fetchone()
+        # Check if the employee already has an attendance record for today
+        cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
+                    (emp_id, current_date))
+        record = cursor.fetchone()
 
-    if record:
-        # Record exists, update time_in or time_out by appending new time
-        attendance_id, time_in, time_out = record
+        if record:
+            # Record exists, update time_in or time_out by appending new time
+            attendance_id, time_in, time_out = record
 
-        if check_type == "check_in":
-            if time_in:
-                updated_time_in = f"{time_in},{detection_time}"
-            else:
-                updated_time_in = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
-        elif check_type == "check_out":
-            if time_out:
-                updated_time_out = f"{time_out},{detection_time}"
-            else:
-                updated_time_out = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
+            if check_type == "check_in":
+                if time_in:
+                    updated_time_in = f"{time_in},{detection_time}"
+                else:
+                    updated_time_in = detection_time
+                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
+            elif check_type == "check_out":
+                if time_out:
+                    updated_time_out = f"{time_out},{detection_time}"
+                else:
+                    updated_time_out = detection_time
+                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
 
-    else:
-        # Insert a new record with the first detection time
-        if check_type == "check_in":
-            cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
-                (current_date, emp_id, detection_time, ''))
-        elif check_type == "check_out":
-            cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
-                (current_date, emp_id, '', detection_time))
+        else:
+            # Insert a new record with the first detection time
+            if check_type == "check_in":
+                cursor.execute(
+                    "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
+                    (current_date, emp_id, detection_time, ''))
+            elif check_type == "check_out":
+                cursor.execute(
+                    "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
+                    (current_date, emp_id, '', detection_time))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            raise HTTPException(status_code=500, detail="Database connection failed")
+    finally:
+        if conn:
+            conn.close()
+    
 
 class EmbeddingRequest(BaseModel):
     db_path: str

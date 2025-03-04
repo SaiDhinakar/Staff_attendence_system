@@ -151,46 +151,68 @@ latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
 
+def reset_camera():
+    """Force reset the Jetson camera pipeline to fix stream issues."""
+    os.system("sudo systemctl restart nvargus-daemon")
+    time.sleep(2)  # Give time for the daemon to restart
 
 def video_capture():
-    """Continuously capture and process video frames from Jetson Nano camera."""
+    """Continuously capture and process video frames."""
     global latest_frame, latest_detected_ids, latest_detection_times
 
     pipeline = (
-        "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
-        "nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! "
-        "videoconvert ! video/x-raw, format=BGR ! appsink"
+        "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
+        "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
+        "nvvidconv ! video/x-raw, format=BGRx ! "
+        "videoconvert ! video/x-raw, format=BGR ! "
+        "appsink drop=1"
     )
 
-    # Open the camera stream
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    # cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer delay
+    cap.set(cv2.CAP_PROP_FPS, 30)  # Ensure 30 FPS
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     if not cap.isOpened():
-        print("Error: Could not open camera stream.")
+        print("\u274c Could not open camera. Exiting.")
         return
 
-    print("Successfully opened camera stream")
-
-    # Continuously capture frames
     try:
         while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("Warning: Failed to grab frame.")
-                continue
+            try:
+                ret, frame = cap.read()
+                if not ret:
+                    print("\u26a0\ufe0f Warning: Failed to grab frame.")
+                    reset_camera()
+                    cap.release()
+                    time.sleep(2)
+                    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    continue
 
-            # Process the frame for face detection and recognition
-            modified_frame, detected_ids, detection_time = face_detector.process_frame(frame)
+                # Process frame for face detection
+                modified_frame, detected_ids, detection_time = face_detector.process_frame(frame)
 
-            # Store latest results
-            latest_frame = modified_frame
-            latest_detected_ids = detected_ids
-            latest_detection_times = detection_time
+                # Update global frame
+                latest_frame = modified_frame
+                latest_detected_ids = detected_ids
+                latest_detection_times = detection_time
 
+            except Exception as e:
+                print(f"\u26a0\ufe0f Error processing frame: {str(e)}")
+                time.sleep(1)  # Add a delay before retrying
+
+    except KeyboardInterrupt:
+        print("Stopping video capture...")
     except Exception as e:
-        print(f"Error during capture: {str(e)}")
+        print(f"\u274c Fatal error during capture: {str(e)}")
     finally:
-        cap.release()
+        if 'cap' in locals() and cap is not None:
+            cap.release()
+        print("\U0001f504 Camera released.")
+
+
+
 
 
 def generate_video_stream():
@@ -208,53 +230,59 @@ def generate_video_stream():
             }
             yield f"data: {json.dumps(data)}\n\n"
 
-        time.sleep(0.1)  # Control frame rate
+        time.sleep(0.01)  # Control frame rate
 
 
 def save_attendance(emp_id, detection_time, check_type):
-    conn = sqlite3.connect(
-        r"/mnt/data/PROJECTS/Staff_attendence_system/DjangoFrameWork/StaffFaceRecognition/db.sqlite3")  # Connect to the database
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(r"../db.sqlite3")
+        cursor = conn.cursor()
 
-    # Get current date
-    current_date = datetime.now().strftime("%Y-%m-%d")
+        # Get current date
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
-    # Check if the employee already has an attendance record for today
-    cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
-                   (emp_id, current_date))
-    record = cursor.fetchone()
+        # Check if the employee already has an attendance record for today
+        cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
+                       (emp_id, current_date))
+        record = cursor.fetchone()
 
-    if record:
-        # Record exists, update time_in or time_out by appending new time
-        attendance_id, time_in, time_out = record
+        if record:
+            # Record exists, update time_in or time_out by appending new time
+            attendance_id, time_in, time_out = record
 
-        if check_type == "check_in":
-            if time_in:
-                updated_time_in = f"{time_in},{detection_time}"
-            else:
-                updated_time_in = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
-        elif check_type == "check_out":
-            if time_out:
-                updated_time_out = f"{time_out},{detection_time}"
-            else:
-                updated_time_out = detection_time
-            cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?",
-                           (updated_time_out, attendance_id))
+            if check_type == "check_in":
+                if time_in:
+                    updated_time_in = f"{time_in},{detection_time}"
+                else:
+                    updated_time_in = detection_time
+                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?",
+                               (updated_time_in, attendance_id))
+            elif check_type == "check_out":
+                if time_out:
+                    updated_time_out = f"{time_out},{detection_time}"
+                else:
+                    updated_time_out = detection_time
+                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?",
+                               (updated_time_out, attendance_id))
 
-    else:
-        # Insert a new record with the first detection time
-        if check_type == "check_in":
-            cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
-                (current_date, emp_id, detection_time, ''))
-        elif check_type == "check_out":
-            cursor.execute(
-                "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
-                (current_date, emp_id, '', detection_time))
+        else:
+            # Insert a new record with the first detection time
+            if check_type == "check_in":
+                cursor.execute(
+                    "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
+                    (current_date, emp_id, detection_time, ''))
+            elif check_type == "check_out":
+                cursor.execute(
+                    "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
+                    (current_date, emp_id, '', detection_time))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Database connection failed")
+    finally:
+        if conn:
+            conn.close()
 
 
 class EmbeddingRequest(BaseModel):
@@ -376,7 +404,8 @@ async def check_out():
 @app.get('/video_stream')
 async def video_stream():
     """Stream video with face detection results to the client."""
-    return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
+    return StreamingResponse(generate_video_stream(), media_type='multipart/x-mixed-replace; boundary=frame')
+
 
 
 if __name__ == '__main__':
@@ -385,6 +414,5 @@ if __name__ == '__main__':
     video_thread.start()
 
     # Start the FastAPI server
-    import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=5600)
+
