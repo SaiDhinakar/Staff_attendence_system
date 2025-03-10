@@ -114,25 +114,40 @@
       </div>
     </div>
   </div>
+</div>
+<div class="success-overlay" id="successOverlay">
+    <div class="success-content">
+        <div class="checkmark-circle">
+            <svg viewBox="0 0 52 52">
+                <circle cx="26" cy="26" r="25" fill="none"/>
+                <path d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+            </svg>
+        </div>
+        <div class="employee-details">
+            <h2>Check-In Successful!</h2>
+            <p class="emp-name">Name: <span></span></p>
+            <p class="emp-id">ID: <span></span></p>
+            <p class="emp-dept">Department: <span></span></p>
+        </div>
+    </div>
 
   <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      const videoFrame = document.getElementById("video-frame");
-
-      let IP;
+ let IP;
       fetch('/api/get_env/')
         .then(response => response.json())
         .then(env => {
             IP = env.IP;
+	    console.log("IP found",IP);
         })
         .catch(error => console.error('Error Fetching environment variable:',error));
 
-
+	console.log("URL : ",IP);
+    document.addEventListener("DOMContentLoaded", function () {
+      const videoFrame = document.getElementById("video-frame");
       function startStream() {
         const eventSource = new EventSource(`http://${IP}:5600/video_stream`);
 
-        eventSource.onmessage = function (event) {
-          try {
+        eventSource.onmessage = function (event) {          try {
             let frameData = JSON.parse(event.data);
 
             if (frameData.image) {
@@ -155,18 +170,124 @@
       startStream(); // Start the stream when the page loads
     });
 
-    // Check-In and Check-Out Functions
-    async function checkIn() {
-    const response = await fetch(`http://${IP}:5600/check-in`);
-    const result = await response.json();
-    console.log(result);
-    }
+     // Add this JavaScript to your home.html
 
-    async function checkOut() {
+function showProcessingOverlay() {
+    const streamContent = document.querySelector('.stream-content');
+    const overlay = document.createElement('div');
+    overlay.className = 'processing-overlay';
+    overlay.innerHTML = `
+        <div class="spinner"></div>
+        <p>Processing...</p>
+    `;
+    streamContent.appendChild(overlay);
+}
+
+function hideProcessingOverlay() {
+    const overlay = document.querySelector('.processing-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+}
+
+async function checkIn() {
+    try {
+        showProcessingOverlay();
+        const response = await fetch(`http://${IP}:5600/check-in`);
+        const result = await response.json();
+
+        if (response.ok) {
+            const employeeData = {
+                name: result.employee.name,
+                id: result.employee.id,
+                department: result.employee.department
+            };
+            showResult(`Check-in successful for ${result.employee.id}`, true, employeeData);
+            
+        } else {
+            // Handle error response
+            const errorMessage = result.detail || 'Check-in failed';
+            showResult(errorMessage, false);
+            console.error('Check-in error:', errorMessage);
+        }
+    } catch (error) {
+        // Handle network or other errors
+        const errorMessage = 'Error connecting to server. Please try again.';
+        showResult(errorMessage, false);
+        console.error('Check-in error:', error);
+    } finally {
+        hideProcessingOverlay();
+    }
+}
+
+async function checkOut() {
+    try {
+        showProcessingOverlay();
         const response = await fetch(`http://${IP}:5600/check-out`);
         const result = await response.json();
-        console.log(result);
+
+        if (response.ok) {
+            const employeeData = {
+                name: result.employee.name,
+                id: result.employee.id,
+                department: result.employee.department
+            };
+            showResult(`Check-out successful for ${result.employee.id}`, true, employeeData);
+           
+        } else {
+            // Handle error response
+            const errorMessage = result.detail || 'Check-out failed';
+            showResult(errorMessage, false);
+            console.error('Check-out error:', errorMessage);
+        }
+    } catch (error) {
+        // Handle network or other errors
+        const errorMessage = 'Error connecting to server. Please try again.';
+        showResult(errorMessage, false);
+        console.error('Check-out error:', error);
+    } finally {
+        hideProcessingOverlay();
     }
+}
+
+
+function showResult(message, isSuccess, employeeData) {
+    if (isSuccess && employeeData) {
+        const overlay = document.getElementById('successOverlay');
+        const empName = overlay.querySelector('.emp-name span');
+        const empId = overlay.querySelector('.emp-id span');
+        const empDept = overlay.querySelector('.emp-dept span');
+
+        empName.textContent = employeeData.name || '';
+        empId.textContent = employeeData.id || '';
+        empDept.textContent = employeeData.department || '';
+
+        overlay.classList.add('show-success');
+
+        setTimeout(() => {
+            overlay.classList.remove('show-success');
+        }, 3000);
+    }
+
+    // Keep your existing notification
+    const resultDiv = document.createElement('div');
+    resultDiv.className = `result-message ${isSuccess ? 'success' : 'error'}`;
+    resultDiv.textContent = message;
+
+    if (!isSuccess) {
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-exclamation-circle';
+        resultDiv.prepend(icon);
+    }
+
+    document.querySelector('.live-stream-container').appendChild(resultDiv);
+
+    setTimeout(() => {
+        if (resultDiv.parentElement) {
+            resultDiv.remove();
+        }
+    }, 5000);
+}
 
  </script>
 
@@ -409,10 +530,7 @@
         grid-template-columns: 1fr;
       }
     }
-  </style>
-  <style>
-    /* Add these styles to your existing CSS in home.html */
-
+  
 .processing-overlay {
     position: absolute;
     top: 0;
@@ -476,104 +594,85 @@
 .stream-content {
     position: relative;
 }
+.success-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.success-content {
+    text-align: center;
+    color: white;
+    padding: 40px;
+    border-radius: 20px;
+    max-width: 400px;
+}
+
+.checkmark-circle {
+    width: 100px;
+    height: 100px;
+    position: relative;
+    margin: 0 auto 20px;
+}
+
+.checkmark-circle svg {
+    width: 100px;
+    height: 100px;
+    fill: none;
+    stroke: #4CAF50;
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.employee-details {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.5s ease forwards 0.6s;
+}
+
+.employee-details h2 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #4CAF50;
+}
+
+.employee-details p {
+    margin: 5px 0;
+    font-size: 16px;
+    color: #fff;
+}
+
+@keyframes stroke {
+    100% {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.show-success {
+    opacity: 1;
+    visibility: visible;
+}
   </style>
 </div>
-<script>
-  // Add this JavaScript to your home.html
 
-function showProcessingOverlay() {
-    const streamContent = document.querySelector('.stream-content');
-    const overlay = document.createElement('div');
-    overlay.className = 'processing-overlay';
-    overlay.innerHTML = `
-        <div class="spinner"></div>
-        <p>Processing...</p>
-    `;
-    streamContent.appendChild(overlay);
-}
-
-function hideProcessingOverlay() {
-    const overlay = document.querySelector('.processing-overlay');
-    if (overlay) {
-        overlay.remove();
-    }
-}
-
-// Update these functions in your home.html
-
-async function checkIn() {
-    try {
-        showProcessingOverlay();
-        const response = await fetch('http://127.0.0.1:5600/check-in');
-        const result = await response.json();
-        
-        if (response.ok) {
-            showResult(`Check-in successful for ${result.employee.id} (Confidence: ${result.employee.confidence})`, true);
-            // Refresh the attendance table
-            location.reload();
-        } else {
-            // Handle error response
-            const errorMessage = result.detail || 'Check-in failed';
-            showResult(errorMessage, false);
-            console.error('Check-in error:', errorMessage);
-        }
-    } catch (error) {
-        // Handle network or other errors
-        const errorMessage = 'Error connecting to server. Please try again.';
-        showResult(errorMessage, false);
-        console.error('Check-in error:', error);
-    } finally {
-        hideProcessingOverlay();
-    }
-}
-
-async function checkOut() {
-    try {
-        showProcessingOverlay();
-        const response = await fetch('http://127.0.0.1:5600/check-out');
-        const result = await response.json();
-        
-        if (response.ok) {
-            showResult(`Check-out successful for ${result.employee.id} (Confidence: ${result.employee.confidence})`, true);
-            // Refresh the attendance table
-            location.reload();
-        } else {
-            // Handle error response
-            const errorMessage = result.detail || 'Check-out failed';
-            showResult(errorMessage, false);
-            console.error('Check-out error:', errorMessage);
-        }
-    } catch (error) {
-        // Handle network or other errors
-        const errorMessage = 'Error connecting to server. Please try again.';
-        showResult(errorMessage, false);
-        console.error('Check-out error:', error);
-    } finally {
-        hideProcessingOverlay();
-    }
-}
-
-// Add this function to show error messages on the page
-function showResult(message, isSuccess) {
-    const resultDiv = document.createElement('div');
-    resultDiv.className = `result-message ${isSuccess ? 'success' : 'error'}`;
-    resultDiv.textContent = message;
-    
-    // Add error icon for failures
-    if (!isSuccess) {
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-exclamation-circle';
-        resultDiv.prepend(icon);
-    }
-    
-    document.querySelector('.live-stream-container').appendChild(resultDiv);
-    
-    // Remove the message after 5 seconds
-    setTimeout(() => {
-        if (resultDiv.parentElement) {
-            resultDiv.remove();
-        }
-    }, 5000);
-}
-</script>
 {% endblock %}

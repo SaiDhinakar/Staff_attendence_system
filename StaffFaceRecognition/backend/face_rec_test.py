@@ -150,6 +150,7 @@ face_detector = FaceDetect()
 latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
+<<<<<<< HEAD
 
 def reset_camera():
     """Force reset the Jetson camera pipeline to fix stream issues."""
@@ -161,6 +162,9 @@ def video_capture():
     global latest_frame, latest_detected_ids, latest_detection_times
 
     pipeline = (
+=======
+pipeline = (
+>>>>>>> 98bb119 (Code updated)
         "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
         "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
         "nvvidconv ! video/x-raw, format=BGRx ! "
@@ -168,7 +172,29 @@ def video_capture():
         "appsink drop=1"
     )
 
+<<<<<<< HEAD
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+=======
+def reset_camera():
+    """Release and reinitialize the camera without restarting Jetson services."""
+    print("🔄 Resetting camera pipeline...")
+    os.system("sudo service nvargus-daemon stop")
+    time.sleep(1)
+    os.system("sudo service nvargus-daemon start")
+    time.sleep(2)
+
+    print("✅ Camera reset complete. Trying to reconnect...")
+    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    return cap
+
+def video_capture():
+    """Continuously capture and process video frames."""
+    global latest_frame, latest_detected_ids, latest_detection_times
+
+
+
+    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+>>>>>>> 98bb119 (Code updated)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer delay
     cap.set(cv2.CAP_PROP_FPS, 30)  # Ensure 30 FPS
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -310,6 +336,7 @@ def store_embeddings(db_path, output_file):
                 image_path = os.path.join(identity_path, image_name)
                 try:
                     img = Image.open(image_path).convert('RGB')
+                    img = img.resize((640, 480))
                     img_cropped = mtcnn(img)
                     if img_cropped is not None:
                         img_embedding = resnet(img_cropped.unsqueeze(0).to(device)).detach().cpu().numpy().tolist()
@@ -406,6 +433,7 @@ async def video_stream():
 
 
 
+
 if __name__ == '__main__':
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
@@ -413,4 +441,7 @@ if __name__ == '__main__':
 
     # Start the FastAPI server
     uvicorn.run(app, host="0.0.0.0", port=5600)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 98bb119 (Code updated)
