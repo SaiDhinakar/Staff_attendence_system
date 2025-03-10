@@ -12,10 +12,13 @@ from fastapi.responses import StreamingResponse
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from collections import defaultdict
 import uvicorn
+from typing import Dict
+import asyncio
+import logging
 
 app = FastAPI()
 
@@ -28,6 +31,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+latest_detection_data = None
+logger = logging.getLogger(__name__)
+
+class RateLimiter:
+    def __init__(self, interval):
+        self.interval = interval
+        self.last_check = {}
+    
+    def can_process(self, identity):
+        now = time.time()
+        if identity not in self.last_check:
+            self.last_check[identity] = now
+            return True
+        
+        if now - self.last_check[identity] >= self.interval:
+            self.last_check[identity] = now
+            return True
+        return False
+
+# Add near the top with other globals
+attendance_limiter = RateLimiter(60)  # 60 second interval
 
 class FaceDetect:
     def __init__(self, db_file="face_embeddings.json"):
@@ -86,9 +110,9 @@ class FaceDetect:
         threshold = 0.6
         return (identity, min_dist) if min_dist <= threshold else ("Unknown", min_dist)
 
-    def process_frame(self, frame):
+    async def process_frame(self, frame):
         """Process a video frame, detect faces, and recognize identities."""
-        global latest_detection_data, latest_detection_times  # Ensure both are updated
+        global latest_detection_data, latest_detection_times
 
         img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         boxes, _ = self.mtcnn.detect(img)
@@ -139,7 +163,15 @@ class FaceDetect:
             "last_detection": time.strftime("%H:%M:%S", time.localtime())
         }
 
-        return frame, detection_data["identity"], detection_data["detection_times"]
+        if detection_data["identity"] != "Unknown":
+            # Process automatic attendance
+            async for event in process_automatic_attendance(detection_data["identity"], detection_data):
+                yield event
+
+        # Instead of return, we'll update these values directly
+        latest_frame = frame
+        latest_detected_ids = detection_data["identity"]
+        latest_detection_times = detection_data["detection_times"]
 
     def encode_image(self, frame):
         """Convert frame to base64 encoded string."""
@@ -185,6 +217,8 @@ face_detector = FaceDetect()
 latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
+last_attendance_time: Dict[str, datetime] = {}
+MIN_ATTENDANCE_INTERVAL = timedelta(minutes=1)  # Minimum time between attendance marks
 
 def reset_camera():
     """Force reset the Jetson camera pipeline to fix stream issues."""
@@ -195,22 +229,17 @@ checked_status = None
 
 employee_check_status  = {}
 
+async def process_frame_wrapper(frame):
+    try:
+        async for _ in face_detector.process_frame(frame):
+            pass
+    except Exception as e:
+        print(f"Error in process_frame: {e}")
+
 def video_capture():
     """Continuously capture and process video frames."""
     global latest_frame, latest_detected_ids, latest_detection_times
 
-<<<<<<< HEAD:StaffFaceRecognition/backend/face_rec_test_lap.py
-    #
-    # pipeline = (
-    #     "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=1280, height=720, format=NV12, framerate=30/1 ! "
-    #     "nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! "
-    #     "videoconvert ! video/x-raw, format=BGR ! appsink"
-    # )
-
-    # Open the camera stream
-    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    cap = cv2.VideoCapture(0)
-=======
     pipeline = (
         "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
         "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
@@ -225,7 +254,6 @@ def video_capture():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
->>>>>>> 98bb119 (Code updated):StaffFaceRecognition/backend/face_detect.py
     if not cap.isOpened():
         print("\u274c Could not open camera. Exiting.")
         return
@@ -242,19 +270,14 @@ def video_capture():
                     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
                     continue
 
-                # Process frame for face detection
-                modified_frame, detected_ids, detection_time = face_detector.process_frame(frame)
-
-                # Update global frame
-                latest_frame = modified_frame
-                latest_detected_ids = detected_ids
-                latest_detection_times = detection_time
+                # Use asyncio to run the async process_frame
+                asyncio.run(process_frame_wrapper(frame))
 
                 if employee_check_status:
                     if employee_check_status[str(latest_detected_ids)]:
-                        check_in()
+                        asyncio.run(check_in())
                     else:
-                        check_out()
+                        asyncio.run(check_out())
 
 
             except Exception as e:
@@ -268,7 +291,8 @@ def video_capture():
     finally:
         if 'cap' in locals() and cap is not None:
             cap.release()
-        print("\U0001f504 Camera released.")
+            cv2.destroyAllWindows()  # Add this line
+        print("\U0001f504 Camera resources released.")
 
 
 
@@ -276,20 +300,21 @@ def video_capture():
 
 def generate_video_stream():
     """Generate a continuous video stream with detection results."""
-    global latest_frame, latest_detected_ids, latest_detection_times
-
     while True:
         if latest_frame is not None:
-            # Encode the latest frame to base64
             encoded_frame = face_detector.encode_image(latest_frame)
-
-            # Send the frame and detection results in correct SSE format
-            data = {
-                "image": encoded_frame
+            
+            # Add event type for different messages
+            frame_data = {
+                "type": "frame_update",
+                "data": {
+                    "image": encoded_frame,
+                    "detection": latest_detected_ids,
+                    "timestamp": time.time()
+                }
             }
-            yield f"data: {json.dumps(data)}\n\n"
-
-        time.sleep(0.01)  # Control frame rate
+            yield f"data: {json.dumps(frame_data)}\n\n"
+        time.sleep(0.01)
 
 
 def save_attendance(emp_id, detection_time, check_type):
@@ -332,7 +357,6 @@ def save_attendance(emp_id, detection_time, check_type):
                 cursor.execute(
                     "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
                     (current_date, emp_id, '', detection_time))
-<<<<<<< HEAD:StaffFaceRecognition/backend/face_rec_test_lap.py
 
         conn.commit()
     except sqlite3.Error as e:
@@ -341,18 +365,6 @@ def save_attendance(emp_id, detection_time, check_type):
     finally:
         if conn:
             conn.close()
-    
-=======
-
-        conn.commit()
-    except sqlite3.Error as e:
-            print(f"Database error: {e}")
-            raise HTTPException(status_code=500, detail="Database connection failed")
-    finally:
-        if conn:
-            conn.close()
-
->>>>>>> 98bb119 (Code updated):StaffFaceRecognition/backend/face_detect.py
 
 class EmbeddingRequest(BaseModel):
     db_path: str
@@ -504,6 +516,176 @@ async def video_stream():
     """Stream video with face detection results to the client."""
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
+
+async def process_automatic_attendance(identity: str, detection_data: dict):
+    """Process automatic attendance based on face detection"""
+    try:
+        # Validate attendance first
+        if not validate_attendance(identity, "check_in"):
+            logger.warning(f"Attendance validation failed for {identity}")
+            return
+            
+        current_time = datetime.now()
+    
+        # Check if enough time has passed since last attendance
+        if identity in last_attendance_time:
+            time_diff = current_time - last_attendance_time[identity]
+            if time_diff < MIN_ATTENDANCE_INTERVAL:
+                return
+    
+        try:
+            # Get employee details
+            db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
+            employee = cursor.fetchone()
+            
+            if not employee:
+                return
+                
+            name, department = employee
+            
+            # Determine check type based on time
+            current_hour = current_time.hour
+            check_type = "check_in" if current_hour < 12 else "check_out"
+            
+            # Save attendance
+            detection_time = current_time.strftime("%H:%M:%S")
+            save_attendance(identity, detection_time, check_type)
+            
+            # Update last attendance time
+            last_attendance_time[identity] = current_time
+            
+            # Prepare attendance record for frontend
+            attendance_record = {
+                "emp_id": identity,
+                "emp_name": name,
+                "department": department,
+                "time_in_list": detection_time if check_type == "check_in" else None,
+                "time_out_list": detection_time if check_type == "check_out" else None,
+                "working_hours": calculate_working_hours(identity)
+            }
+            
+            # Send SSE event with attendance update
+            data = {
+                "type": "attendance_update",
+                "data": attendance_record
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+            
+        except Exception as e:
+            print(f"Error in automatic attendance: {e}")
+        finally:
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"Error in automatic attendance: {e}")
+        # Send error event to frontend
+        error_data = {
+            "type": "attendance_error",
+            "data": {"message": str(e)}
+        }
+        yield f"data: {json.dumps(error_data)}\n\n"
+
+def calculate_working_hours(emp_id: str) -> str:
+    """Calculate working hours for an employee"""
+    try:
+        conn = sqlite3.connect(r"../db.sqlite3")
+        cursor = conn.cursor()
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        cursor.execute("""
+            SELECT time_in_list, time_out_list 
+            FROM Home_attendance 
+            WHERE emp_id = ? AND date = ?
+        """, (emp_id, current_date))
+        
+        record = cursor.fetchone()
+        if not record:
+            return "--:--"
+            
+        time_in, time_out = record
+        
+        if not time_in or not time_out:
+            return "--:--"
+            
+        # Get latest check-in and check-out times
+        latest_in = time_in.split(',')[-1]
+        latest_out = time_out.split(',')[-1]
+        
+        # Convert to datetime
+        time_in_dt = datetime.strptime(latest_in, "%H:%M:%S")
+        time_out_dt = datetime.strptime(latest_out, "%H:%M:%S")
+        
+        # Calculate duration
+        duration = time_out_dt - time_in_dt
+        hours = duration.seconds // 3600
+        minutes = (duration.seconds % 3600) // 60
+        
+        return f"{hours:02d}:{minutes:02d}"
+        
+    except Exception as e:
+        print(f"Error calculating working hours: {e}")
+        return "--:--"
+    finally:
+        if conn:
+            conn.close()
+
+class AttendanceError(Exception):
+    """Custom exception for attendance-related errors"""
+    pass
+
+def validate_attendance(emp_id: str, check_type: str) -> bool:
+    """Validate attendance marking conditions"""
+    try:
+        conn = sqlite3.connect(r"../db.sqlite3")
+        cursor = conn.cursor()
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Check if employee exists
+        cursor.execute("SELECT id FROM Home_employee WHERE emp_id = ?", (emp_id,))
+        if not cursor.fetchone():
+            raise AttendanceError("Employee not found")
+            
+        # Check for duplicate check-in/out in short time
+        cursor.execute("""
+            SELECT time_in_list, time_out_list 
+            FROM Home_attendance 
+            WHERE emp_id = ? AND date = ?
+        """, (emp_id, current_date))
+        
+        record = cursor.fetchone()
+        if record:
+            time_list = record[0] if check_type == "check_in" else record[1]
+            if time_list:
+                last_time = datetime.strptime(time_list.split(',')[-1], "%H:%M:%S")
+                time_diff = datetime.now() - last_time
+                if time_diff < MIN_ATTENDANCE_INTERVAL:
+                    raise AttendanceError("Too soon for another attendance mark")
+                    
+        return True
+        
+    except AttendanceError as e:
+        print(f"Attendance validation failed: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def get_db_connection(max_retries=3, retry_delay=1):
+    """Get database connection with retry mechanism"""
+    for attempt in range(max_retries):
+        try:
+            conn = sqlite3.connect(r"../db.sqlite3")
+            return conn
+        except sqlite3.Error as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed to connect to database after {max_retries} attempts")
+                raise
+            logger.warning(f"Database connection attempt {attempt + 1} failed, retrying...")
+            time.sleep(retry_delay)
 
 
 if __name__ == '__main__':

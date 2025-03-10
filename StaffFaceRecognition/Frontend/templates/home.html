@@ -289,6 +289,56 @@ function showResult(message, isSuccess, employeeData) {
     }, 5000);
 }
 
+// Add this after the existing eventSource.onmessage handler
+
+eventSource.addEventListener('attendance_update', function(event) {
+    try {
+        const data = JSON.parse(event.data);
+        updateAttendanceTable(data);
+    } catch (error) {
+        console.error('Error handling attendance update:', error);
+    }
+});
+
+function updateAttendanceTable(record) {
+    const tableBody = document.querySelector('.attendance-table tbody');
+    const noDataRow = tableBody.querySelector('.no-data');
+    
+    if (noDataRow) {
+        noDataRow.remove();
+    }
+
+    // Check if record already exists
+    const existingRow = Array.from(tableBody.rows).find(
+        row => row.cells[1].textContent === record.emp_id
+    );
+
+    if (existingRow) {
+        // Update existing row
+        existingRow.cells[4].textContent = record.time_in_list || '--:--';
+        existingRow.cells[5].textContent = record.time_out_list || '--:--';
+        existingRow.cells[6].textContent = record.working_hours || '--:--';
+    } else {
+        // Create new row
+        const newRow = tableBody.insertRow();
+        newRow.innerHTML = `
+            <td>${tableBody.rows.length + 1}</td>
+            <td>${record.emp_id}</td>
+            <td>${record.emp_name}</td>
+            <td>${record.department}</td>
+            <td>${record.time_in_list || '--:--'}</td>
+            <td>${record.time_out_list || '--:--'}</td>
+            <td>${record.working_hours || '--:--'}</td>
+        `;
+    }
+
+    // Update total present count
+    const presentCountElement = document.querySelector('.stat-card:nth-child(2) p');
+    const currentCount = parseInt(presentCountElement.textContent);
+    if (!existingRow) {
+        presentCountElement.textContent = currentCount + 1;
+    }
+}
  </script>
 
   <style>
@@ -671,6 +721,26 @@ function showResult(message, isSuccess, employeeData) {
 .show-success {
     opacity: 1;
     visibility: visible;
+}
+
+.attendance-mark-animation {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    animation: fadeInOut 2s ease-in-out;
+    z-index: 1000;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
 }
   </style>
 </div>
