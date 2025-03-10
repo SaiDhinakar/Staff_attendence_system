@@ -236,9 +236,14 @@ async def process_frame_wrapper(frame):
     except Exception as e:
         print(f"Error in process_frame: {e}")
 
+# Replace the current video_capture function with this updated version
 def video_capture():
     """Continuously capture and process video frames."""
     global latest_frame, latest_detected_ids, latest_detection_times
+
+    # Create event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     pipeline = (
         "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
@@ -249,8 +254,8 @@ def video_capture():
     )
 
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer delay
-    cap.set(cv2.CAP_PROP_FPS, 30)  # Ensure 30 FPS
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
@@ -270,19 +275,18 @@ def video_capture():
                     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
                     continue
 
-                # Use asyncio to run the async process_frame
-                asyncio.run(process_frame_wrapper(frame))
+                # Use the event loop to run async functions
+                loop.run_until_complete(process_frame_wrapper(frame))
 
                 if employee_check_status:
                     if employee_check_status[str(latest_detected_ids)]:
-                        asyncio.run(check_in())
+                        loop.run_until_complete(check_in())
                     else:
-                        asyncio.run(check_out())
-
+                        loop.run_until_complete(check_out())
 
             except Exception as e:
                 print(f"\u26a0\ufe0f Error processing frame: {str(e)}")
-                time.sleep(1)  # Add a delay before retrying
+                time.sleep(1)
 
     except KeyboardInterrupt:
         print("Stopping video capture...")
@@ -291,12 +295,9 @@ def video_capture():
     finally:
         if 'cap' in locals() and cap is not None:
             cap.release()
-            cv2.destroyAllWindows()  # Add this line
+            cv2.destroyAllWindows()
+        loop.close()
         print("\U0001f504 Camera resources released.")
-
-
-
-
 
 def generate_video_stream():
     """Generate a continuous video stream with detection results."""
@@ -326,7 +327,7 @@ def save_attendance(emp_id, detection_time, check_type):
         current_date = datetime.now().strftime("%Y-%m-%d")
 
         # Check if the employee already has an attendance record for today
-        cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
+        cursor.execute("SELECT emp_id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
                     (emp_id, current_date))
         record = cursor.fetchone()
 
@@ -645,7 +646,7 @@ def validate_attendance(emp_id: str, check_type: str) -> bool:
         current_date = datetime.now().strftime("%Y-%m-%d")
         
         # Check if employee exists
-        cursor.execute("SELECT id FROM Home_employee WHERE emp_id = ?", (emp_id,))
+        cursor.execute("SELECT emp_id FROM Home_employee WHERE emp_id = ?", (emp_id,))
         if not cursor.fetchone():
             raise AttendanceError("Employee not found")
             
