@@ -19,6 +19,7 @@ import uvicorn
 from typing import Dict
 import asyncio
 import logging
+from fastapi import BackgroundTasks
 
 app = FastAPI()
 
@@ -77,6 +78,21 @@ class FaceDetect:
         else:
             print(f"Embedding file {self.db_file} not found.")
             return {}
+
+    def reload_embeddings(self):
+        """Reload face embeddings from the JSON file."""
+        try:
+            if os.path.exists(self.db_file):
+                with open(self.db_file, "r") as f:
+                    self.embeddings = json.load(f)
+                logger.info("Face embeddings reloaded successfully")
+                return True
+            else:
+                logger.error(f"Embedding file {self.db_file} not found")
+                return False
+        except Exception as e:
+            logger.error(f"Error reloading embeddings: {e}")
+            return False
 
     def recognize_face(self, face_tensor):
         """Compares face embeddings to known faces in the database."""
@@ -687,6 +703,20 @@ def get_db_connection(max_retries=3, retry_delay=1):
                 raise
             logger.warning(f"Database connection attempt {attempt + 1} failed, retrying...")
             time.sleep(retry_delay)
+
+
+@app.post("/reload-embeddings")
+async def reload_embeddings(background_tasks: BackgroundTasks):
+    """Endpoint to reload face embeddings"""
+    try:
+        success = face_detector.reload_embeddings()
+        if success:
+            return {"status": "success", "message": "Face embeddings reloaded successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reload embeddings")
+    except Exception as e:
+        logger.error(f"Error in reload endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == '__main__':

@@ -21,6 +21,8 @@ from concurrent.futures import ThreadPoolExecutor
 from django.db import transaction
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+import json
+from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -217,10 +219,21 @@ async def process_embeddings_background(emp_id, temp_dir, media_root, embeddings
                     "message": f"Face embeddings processed for employee {emp_id}"
                 }
             )
+
+        # After embeddings are stored, trigger reload
+        try:
+            response = requests.post(
+                "http://127.0.0.1:5600/reload-embeddings",
+                timeout=5
+            )
+            if response.status_code != 200:
+                logger.warning(f"Failed to reload embeddings: {response.status_code}")
+        except requests.RequestException as e:
+            logger.error(f"Error reloading embeddings: {e}")
+            
     except Exception as e:
-        logger.error(f"Failed to store embeddings for {emp_id}: {e}")
+        logger.error(f"Error processing embeddings: {e}")
     finally:
-        # Clean up temp directory
         shutil.rmtree(temp_dir)
 
 def process_images_async(temp_dir, images):
@@ -289,44 +302,69 @@ def manage_employees(request):
         elif action == 'delete':
             try:
                 emp_id = request.POST.get('emp_id')
-                
-                # 1. Delete employee images from media directory
-                employee_images_path = os.path.join(settings.MEDIA_ROOT, emp_id)
-                if os.path.exists(employee_images_path):
-                    shutil.rmtree(employee_images_path)
-                    logger.info(f"Deleted image directory for employee {emp_id}")
+                if not emp_id:
+                    raise ValueError("Employee ID is required")
                     
-                # 2. Delete embeddings from face_embeddings.json
-                embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
-                if os.path.exists(embeddings_file):
-                    try:
-                        with open(embeddings_file, 'r') as f:
-                            embeddings_data = json.load(f)
-
-                        if emp_id in embeddings_data:
-                            del embeddings_data[emp_id]  # More explicit deletion
-                            
-                            with open(embeddings_file, 'w') as f:
-                                json.dump(embeddings_data, f, indent=4)
-                            logger.info(f"Embeddings for employee {emp_id} deleted successfully")
-                    except Exception as e:
-                        logger.error(f"Failed to delete embeddings for {emp_id}: {e}")
+                with transaction.atomic():
+                    # 1. Delete employee images from media directory
+                    employee_images_path = os.path.join(settings.MEDIA_ROOT, emp_id)
+                    if os.path.exists(employee_images_path):
+                        shutil.rmtree(employee_images_path)
+                        logger.info(f"Deleted image directory for employee {emp_id}")
                         
-                # 3. Notify face detection backend
-                try:
-                    response = requests.delete(f"http://127.0.0.1:5600/delete-employee/{emp_id}")
-                    if response.status_code == 200:
-                        logger.info(f"Face detection backend updated for employee {emp_id}")
-                    else:
-                        logger.error(f"Failed to update face detection backend: {response.text}")
-                except requests.RequestException as e:
-                    logger.error(f"Failed to communicate with face detection backend: {e}")
+                    # 2. Delete embeddings from face_embeddings.json
+                    embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
+                    if os.path.exists(embeddings_file):
+                        try:
+                            with open(embeddings_file, 'r') as f:
+                                embeddings_data = json.load(f)
 
-                # 4. Delete employee record (this will cascade delete attendance records)
-                Employee.objects.filter(emp_id=emp_id).delete()
-                
-                messages.success(request, 'Employee deleted successfully')
-                
+                            if emp_id in embeddings_data:
+                                del embeddings_data[emp_id]
+                                
+                                with open(embeddings_file, 'w') as f:
+                                    json.dump(embeddings_data, f, indent=4)
+                                logger.info(f"Embeddings for employee {emp_id} deleted successfully")
+                        except (json.JSONDecodeError, IOError) as e:
+                            logger.error(f"Failed to delete embeddings for {emp_id}: {e}")
+                            
+                    # 3. Notify face detection backend
+                    try:
+                        response = requests.delete(
+                            f"http://127.0.0.1:5600/delete-employee/{emp_id}",
+                            timeout=5
+                        )
+                        if response.status_code == 200:
+                            logger.info(f"Face detection backend updated for employee {emp_id}")
+                        else:
+                            logger.warning(f"Face detection backend returned status {response.status_code}")
+                    except RequestException as e:
+                        logger.warning(f"Face detection backend not available: {e}")
+                        # Continue with deletion even if backend is not available
+                        
+                    # 4. Delete employee record
+                    employee = Employee.objects.filter(emp_id=emp_id).first()
+                    if employee:
+                        employee.delete()
+                        logger.info(f"Employee {emp_id} deleted from database")
+                        messages.success(request, 'Employee deleted successfully')
+                    else:
+                        logger.warning(f"Employee {emp_id} not found in database")
+                        messages.warning(request, 'Employee not found in database')
+
+                    # After successful deletion, reload embeddings
+                    try:
+                        response = requests.post(
+                            "http://127.0.0.1:5600/reload-embeddings",
+                            timeout=5
+                        )
+                        if response.status_code == 200:
+                            logger.info("Face embeddings reloaded after deletion")
+                        else:
+                            logger.warning(f"Failed to reload embeddings: {response.status_code}")
+                    except requests.RequestException as e:
+                        logger.error(f"Error reloading embeddings: {e}")
+                        
             except Exception as e:
                 logger.error(f"Failed to delete employee: {str(e)}", exc_info=True)
                 messages.error(request, f'Failed to delete employee: {str(e)}')
