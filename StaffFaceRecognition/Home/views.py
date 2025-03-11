@@ -328,19 +328,19 @@ def manage_employees(request):
                         except (json.JSONDecodeError, IOError) as e:
                             logger.error(f"Failed to delete embeddings for {emp_id}: {e}")
                             
-                    # 3. Notify face detection backend
-                    try:
-                        response = requests.delete(
-                            f"http://127.0.0.1:5600/delete-employee/{emp_id}",
-                            timeout=5
-                        )
-                        if response.status_code == 200:
-                            logger.info(f"Face detection backend updated for employee {emp_id}")
-                        else:
-                            logger.warning(f"Face detection backend returned status {response.status_code}")
-                    except RequestException as e:
-                        logger.warning(f"Face detection backend not available: {e}")
-                        # Continue with deletion even if backend is not available
+                    # # 3. Notify face detection backend
+                    # try:
+                    #     response = requests.delete(
+                    #         f"http://127.0.0.1:5600/delete-employee/{emp_id}",
+                    #         timeout=5
+                    #     )
+                    #     if response.status_code == 200:
+                    #         logger.info(f"Face detection backend updated for employee {emp_id}")
+                    #     else:
+                    #         logger.warning(f"Face detection backend returned status {response.status_code}")
+                    # except RequestException as e:
+                    #     logger.warning(f"Face detection backend not available: {e}")
+                    #     # Continue with deletion even if backend is not available
                         
                     # 4. Delete employee record
                     employee = Employee.objects.filter(emp_id=emp_id).first()
