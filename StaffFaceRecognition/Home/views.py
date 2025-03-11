@@ -289,27 +289,46 @@ def manage_employees(request):
         elif action == 'delete':
             try:
                 emp_id = request.POST.get('emp_id')
-                Employee.objects.filter(emp_id=emp_id).delete()
+                
+                # 1. Delete employee images from media directory
+                employee_images_path = os.path.join(settings.MEDIA_ROOT, emp_id)
+                if os.path.exists(employee_images_path):
+                    shutil.rmtree(employee_images_path)
+                    logger.info(f"Deleted image directory for employee {emp_id}")
+                    
+                # 2. Delete embeddings from face_embeddings.json
+                embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
                 if os.path.exists(embeddings_file):
                     try:
                         with open(embeddings_file, 'r') as f:
                             embeddings_data = json.load(f)
 
-                        # Filter out embeddings for the deleted employee
-                        updated_embeddings = {
-                            k: v for k, v in embeddings_data.items() if k != emp_id
-                        }
-
-                        # Write updated data back to the file
-                        with open(embeddings_file, 'w') as f:
-                            json.dump(updated_embeddings, f, indent=4)
-
-                        logger.info(f"Embeddings for employee {emp_id} deleted successfully.")
+                        if emp_id in embeddings_data:
+                            del embeddings_data[emp_id]  # More explicit deletion
+                            
+                            with open(embeddings_file, 'w') as f:
+                                json.dump(embeddings_data, f, indent=4)
+                            logger.info(f"Embeddings for employee {emp_id} deleted successfully")
                     except Exception as e:
                         logger.error(f"Failed to delete embeddings for {emp_id}: {e}")
+                        
+                # 3. Notify face detection backend
+                try:
+                    response = requests.delete(f"http://127.0.0.1:5600/delete-employee/{emp_id}")
+                    if response.status_code == 200:
+                        logger.info(f"Face detection backend updated for employee {emp_id}")
+                    else:
+                        logger.error(f"Failed to update face detection backend: {response.text}")
+                except requests.RequestException as e:
+                    logger.error(f"Failed to communicate with face detection backend: {e}")
 
-                messages.success(request, 'Employee deleted successfully.')
+                # 4. Delete employee record (this will cascade delete attendance records)
+                Employee.objects.filter(emp_id=emp_id).delete()
+                
+                messages.success(request, 'Employee deleted successfully')
+                
             except Exception as e:
+                logger.error(f"Failed to delete employee: {str(e)}", exc_info=True)
                 messages.error(request, f'Failed to delete employee: {str(e)}')
 
         # Redirect to avoid resubmission on refresh.
