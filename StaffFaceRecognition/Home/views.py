@@ -409,7 +409,7 @@ def employee_detail(request, employee_id):
     """View to display detailed information for a specific employee"""
     try:
         # Get the employee object or return 404
-        employee = get_object_or_404(Employee, id=employee_id)
+        employee = get_object_or_404(Employee, emp_id=employee_id)
         
         # Get attendance history for this employee
         attendance_history = Attendance.objects.filter(emp=employee).order_by('-date')[:10]  # Last 10 records
@@ -426,7 +426,10 @@ def employee_detail(request, employee_id):
             'employee': employee,
             'attendance_history': formatted_attendance,
             'total_attendance': Attendance.objects.filter(emp=employee).count(),
+            'MEDIA_URL': settings.MEDIA_URL,  # Add this line
         }
+
+        # print(context)
         
         return render(request, 'employee_detail.html', context)
         

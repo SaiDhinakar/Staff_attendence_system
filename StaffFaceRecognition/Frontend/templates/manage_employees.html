@@ -79,6 +79,33 @@
   .dropdown-item:hover {
     background-color: #f8f9fa;
   }
+
+  /* Clickable row styles */
+  .employee-row {
+    transition: all 0.2s ease-in-out;
+  }
+
+  .employee-row:hover {
+    background-color: #f8f9fa !important;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .employee-row td {
+    padding: 15px;
+  }
+
+  /* Prevent image container from triggering row click */
+  .image-container {
+    z-index: 2;
+    position: relative;
+  }
+
+  /* Make sure buttons don't trigger row click */
+  .btn-group {
+    position: relative;
+    z-index: 2;
+  }
 </style>
 {% endblock %} {% block content %}
 <div class="container">
@@ -121,49 +148,67 @@
       <h2 class="mb-4">Manage Employees</h2>
 
       <!-- Button and Controls Wrapper -->
-<div class="filters-wrapper mb-4">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3" style="display: flex; gap: 10px;">
-      
-      <!-- Add Employee Button -->
-      <button class="btn btn-primary d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
-          <i class="fas fa-plus"></i> Add Employee
-      </button>
+      <div class="filters-wrapper mb-4">
+        <div
+          class="d-flex justify-content-between align-items-center flex-wrap gap-3"
+          style="display: flex; gap: 10px"
+        >
+          <!-- Add Employee Button -->
+          <button
+            class="btn btn-primary d-flex align-items-center gap-2"
+            data-bs-toggle="modal"
+            data-bs-target="#addEmployeeModal"
+          >
+            <i class="fas fa-plus"></i> Add Employee
+          </button>
 
-      <div class="d-flex align-items-center gap-3">
-          
-          <!-- Sort Dropdown -->
-          <div class="dropdown">
-              <button class="btn btn-primary dropdown-toggle px-4 py-2 rounded" type="button" data-bs-toggle="dropdown">
-                  Sort by: <strong>{{ sort_by|title|default:"Employee ID" }}</strong>
+          <div class="d-flex align-items-center gap-3">
+            <!-- Sort Dropdown -->
+            <div class="dropdown">
+              <button
+                class="btn btn-primary dropdown-toggle px-4 py-2 rounded"
+                type="button"
+                data-bs-toggle="dropdown"
+              >
+                Sort by:
+                <strong>{{ sort_by|title|default:"Employee ID" }}</strong>
               </button>
-              <ul class="dropdown-menu dropdown-menu-end shadow-sm rounded" style="width: 180px;">
-                  <li>
-                      <a class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'emp_id' %}active{% endif %}" 
-                         href="?sort=emp_id{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}">
-                          Employee ID
-                          <i class="fas fa-id-badge text-muted"></i>
-                      </a>
-                  </li>
-                  <li>
-                      <a class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'emp_name' %}active{% endif %}" 
-                         href="?sort=emp_name{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}">
-                          Name
-                          <i class="fas fa-user text-muted"></i>
-                      </a>
-                  </li>
-                  <li>
-                      <a class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'department' %}active{% endif %}" 
-                         href="?sort=department{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}">
-                          Department
-                          <i class="fas fa-building text-muted"></i>
-                      </a>
-                  </li>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow-sm rounded"
+                style="width: 180px"
+              >
+                <li>
+                  <a
+                    class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'emp_id' %}active{% endif %}"
+                    href="?sort=emp_id{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}"
+                  >
+                    Employee ID
+                    <i class="fas fa-id-badge text-muted"></i>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'emp_name' %}active{% endif %}"
+                    href="?sort=emp_name{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}"
+                  >
+                    Name
+                    <i class="fas fa-user text-muted"></i>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item d-flex justify-content-between align-items-center {% if sort_by == 'department' %}active{% endif %}"
+                    href="?sort=department{% if request.GET.page %}&page={{ request.GET.page }}{% endif %}"
+                  >
+                    Department
+                    <i class="fas fa-building text-muted"></i>
+                  </a>
+                </li>
               </ul>
+            </div>
           </div>
+        </div>
       </div>
-  </div>
-</div>
-
 
       <!-- Table and existing content... -->
       <div class="table-responsive">
@@ -179,14 +224,12 @@
           </thead>
           <tbody>
             {% for employee in employees %}
-            <tr>
-              <td class="image-container">
+            <tr class="employee-row" onclick="window.location='{% url 'employee_detail' employee.emp_id %}'" style="cursor: pointer;">
+              <td class="image-container" onclick="event.stopPropagation();">
                 {% if employee.profile_pic %}
                 <img
                   src="{{ MEDIA_URL }}{{ employee.profile_pic }}"
                   alt="{{ employee.emp_name }}'s photo"
-                  height="100px"
-                  width="100px"
                   class="employee-image rounded-circle shadow-sm border border-light"
                   loading="lazy"
                   style="
@@ -209,16 +252,8 @@
               <td>{{ employee.emp_id }}</td>
               <td>{{ employee.emp_name }}</td>
               <td>{{ employee.department }}</td>
-              <td>
+              <td onclick="event.stopPropagation();">
                 <div class="btn-group" role="group">
-                  {% if employee.id %}
-                  <a
-                    href="{% url 'employee_detail' employee.id %}"
-                    class="btn btn-info btn-sm"
-                  >
-                    <i class="fas fa-eye"></i> View
-                  </a>
-                  {% endif %}
                   <form method="POST" class="d-inline">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="delete" />
@@ -249,55 +284,61 @@
         </table>
       </div>
     </div>
-  <!-- Pagination -->
-  <div class="pagination-wrapper mt-4">
-    <nav aria-label="Employee pagination" class="d-flex justify-content-center">
-      <ul class="pagination align-items-center" style="display: flex;  color: #000;">
-        {% if employees.has_previous %}
-        <li class="page-item">
-          <a
-            class="page-link rounded-start"
-            href="?page=1{% if sort_by %}&sort={{ sort_by }}{% endif %}"
-          >First
-            <i class="fas fa-angle-double-left"></i>
-          </a>
-        </li>
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ employees.previous_page_number }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
-          >
-            Previous<i class="fas fa-angle-left"></i>
-          </a>
-        </li>
-        {% endif %}
+    <!-- Pagination -->
+    <div class="pagination-wrapper mt-4">
+      <nav
+        aria-label="Employee pagination"
+        class="d-flex justify-content-center"
+      >
+        <ul
+          class="pagination align-items-center"
+          style="display: flex; color: #000"
+        >
+          {% if employees.has_previous %}
+          <li class="page-item">
+            <a
+              class="page-link rounded-start"
+              href="?page=1{% if sort_by %}&sort={{ sort_by }}{% endif %}"
+              >First
+              <i class="fas fa-angle-double-left"></i>
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="?page={{ employees.previous_page_number }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
+            >
+              Previous<i class="fas fa-angle-left"></i>
+            </a>
+          </li>
+          {% endif %}
 
-        <li class="page-item active">
-          <span class="page-link">
-            {{ employees.number }} / {{ employees.paginator.num_pages }}
-          </span>
-        </li>
+          <li class="page-item active">
+            <span class="page-link">
+              {{ employees.number }} / {{ employees.paginator.num_pages }}
+            </span>
+          </li>
 
-        {% if employees.has_next %}
-        <li class="page-item">
-          <a
-            class="page-link"
-            href="?page={{ employees.next_page_number }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
-          >
-            Next<i class="fas fa-angle-right"></i>
-          </a>
-        </li>
-        <li class="page-item">
-          <a
-            class="page-link rounded-end"
-            href="?page={{ employees.paginator.num_pages }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
-          >
-            Last<i class="fas fa-angle-double-right"></i>
-          </a>
-        </li>
-        {% endif %}
-      </ul>
-    </nav>
+          {% if employees.has_next %}
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="?page={{ employees.next_page_number }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
+            >
+              Next<i class="fas fa-angle-right"></i>
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link rounded-end"
+              href="?page={{ employees.paginator.num_pages }}{% if sort_by %}&sort={{ sort_by }}{% endif %}"
+            >
+              Last<i class="fas fa-angle-double-right"></i>
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </nav>
     </div>
   </div>
 </div>
@@ -842,6 +883,27 @@
     closeModalBtns.forEach((btn) => {
       btn.addEventListener("click", function () {
         modal.hide();
+      });
+    });
+  });
+</script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Add hover effect for rows
+    const rows = document.querySelectorAll(".employee-row");
+    rows.forEach((row) => {
+      row.addEventListener("mouseenter", function () {
+        this.style.cursor = "pointer";
+      });
+    });
+
+    // Prevent image hover and buttons from triggering row click
+    const stopPropagation = document.querySelectorAll(
+      ".image-container, .btn-group"
+    );
+    stopPropagation.forEach((element) => {
+      element.addEventListener("click", function (e) {
+        e.stopPropagation();
       });
     });
   });
