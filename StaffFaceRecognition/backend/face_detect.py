@@ -55,7 +55,7 @@ class RateLimiter:
 attendance_limiter = RateLimiter(60)  # 60 second interval
 
 class FaceDetect:
-    def __init__(self, db_file="face_embeddings.json"):
+    def __init__(self, db_file="staff_embeddings.json"):
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print(f'Running on device: {self.device}')
 
@@ -69,7 +69,7 @@ class FaceDetect:
 
         # Add batch processing capabilities
         self.batch_size = 32  # Adjust based on your GPU memory
-
+    
     def load_embeddings(self):
         """Load face embeddings from a JSON file."""
         if os.path.exists(self.db_file):
@@ -269,12 +269,12 @@ def video_capture():
         "appsink drop=1"
     )
 
-    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
+    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # cap.set(cv2.CAP_PROP_FPS, 30)
+    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("\u274c Could not open camera. Exiting.")
         return
@@ -385,7 +385,7 @@ def save_attendance(emp_id, detection_time, check_type):
 
 class EmbeddingRequest(BaseModel):
     db_path: str
-    output_file: str = "face_embeddings.json"
+    output_file: str = "staff_embeddings.json"
 
 
 def store_embeddings(db_path, output_file):
