@@ -6,5 +6,5 @@ StaffFaceRecognition/Home/migrations/__pycache__
 StaffFaceRecognition/media/
 StaffFaceRecognition/backend/__pycache__
 StaffFaceRecognition/Profile/migrations/__pycache__
-StaffFaceRecognition/.env
-env
+/StaffFaceRecognition/.env
+

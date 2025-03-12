@@ -23,6 +23,9 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 import json
 from requests.exceptions import RequestException
+from django.shortcuts import get_object_or_404
+# Add this import at the top with other imports
+from django.core.paginator import Paginator
 
 logger = logging.getLogger(__name__)
 
@@ -328,21 +331,7 @@ def manage_employees(request):
                         except (json.JSONDecodeError, IOError) as e:
                             logger.error(f"Failed to delete embeddings for {emp_id}: {e}")
                             
-                    # # 3. Notify face detection backend
-                    # try:
-                    #     response = requests.delete(
-                    #         f"http://127.0.0.1:5600/delete-employee/{emp_id}",
-                    #         timeout=5
-                    #     )
-                    #     if response.status_code == 200:
-                    #         logger.info(f"Face detection backend updated for employee {emp_id}")
-                    #     else:
-                    #         logger.warning(f"Face detection backend returned status {response.status_code}")
-                    # except RequestException as e:
-                    #     logger.warning(f"Face detection backend not available: {e}")
-                    #     # Continue with deletion even if backend is not available
-                        
-                    # 4. Delete employee record
+                  
                     employee = Employee.objects.filter(emp_id=emp_id).first()
                     if employee:
                         employee.delete()
@@ -372,9 +361,80 @@ def manage_employees(request):
         # Redirect to avoid resubmission on refresh.
         return redirect('manage_employees')
 
-    employees = Employee.objects.all()
+    sort_by = request.GET.get('sort', 'emp_id')
+    
+    # Validate sort field to prevent injection
+    valid_sort_fields = ['emp_id', 'emp_name', 'department', '-emp_id', '-emp_name', '-department']
+    if sort_by not in valid_sort_fields:
+        sort_by = 'emp_id'
+    
+    # Get all employees with sorting
+    employees = Employee.objects.all().order_by(sort_by)
+    
+    # Set up pagination
+    paginator = Paginator(employees, 50)  # Show 50 employees per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    
+    # Process images for current page only
+    for employee in page_obj:
+        # Check for profile image in media/profile_pics directory
+        image_formats = ['.jpg', '.jpeg', '.png']
+        image_found = False
+        
+        for format in image_formats:
+            image_path = f"profile_pics/{employee.emp_id}{format}"
+            full_path = os.path.join(settings.MEDIA_ROOT, image_path)
+            
+            if os.path.exists(full_path):
+                employee.profile_pic = image_path
+                image_found = True
+                break
+        
+        if not image_found:
+            # Make sure this path exists in your static files
+            employee.profile_pic = None
+    
     context = {
-        'employees': employees
+        'employees': page_obj,
+        'sort_by': sort_by,
+        'total_employees': employees.count(),
     }
     return render(request, 'manage_employees.html', context)
 
+@login_required
+@user_passes_test(is_superuser)
+def employee_detail(request, employee_id):
+    """View to display detailed information for a specific employee"""
+    try:
+        # Get the employee object or return 404
+        employee = get_object_or_404(Employee, id=employee_id)
+        
+        # Get attendance history for this employee
+        attendance_history = Attendance.objects.filter(emp=employee).order_by('-date')[:10]  # Last 10 records
+        
+        # Format attendance history
+        formatted_attendance = [{
+            'date': att.date,
+            'time_in': att.get_in_time()[0] if att.get_in_time() else '--:--',
+            'time_out': att.get_out_time()[-1] if att.get_out_time() else '--:--',
+            'working_hours': att.get_working_hours(),
+        } for att in attendance_history]
+        
+        context = {
+            'employee': employee,
+            'attendance_history': formatted_attendance,
+            'total_attendance': Attendance.objects.filter(emp=employee).count(),
+        }
+        
+        return render(request, 'employee_detail.html', context)
+        
+    except Exception as e:
+        logger.error(f"Error in employee_detail view: {str(e)}", exc_info=True)
+        messages.error(request, 'An error occurred while fetching employee details.')
+        return redirect('manage_employees')
+
+def debug_employee_detail(request, employee_id):
+    print(f"Received employee_id: {employee_id}")
+    return HttpResponse(f"Debug: Employee ID = {employee_id}")

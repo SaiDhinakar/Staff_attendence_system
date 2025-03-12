@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h3>Staff Dashboard</h3>
+        </div>
+        <div class="sidebar-menu">
+            <ul>
+                <li><a href="{% url 'home' %}"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="{% url 'report' %}"><i class="fas fa-chart-bar"></i> Reports</a></li>
+                {% if user.is_superuser %}
+                <li><a href="{% url 'manage_employees' %}"><i class="fas fa-users-cog"></i> Manage Employees</a></li>
+                {% endif %}
+                <li><a href="{% url 'logout' %}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="content-wrapper">
+            <!-- Back Button -->
+            <div class="mb-4">
+                <a href="{% url 'manage_employees' %}" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+            </div>
+
+            <div class="row">
+                <!-- Employee Profile Card -->
+                <div class="col-md-4 mb-4">
+                    <div class="card profile-card">
+                        <div class="card-body text-center">
+                            <div class="profile-image-wrapper mb-4">
+                                {% if employee.profile_pic %}
+                                    <img src="{{ MEDIA_URL }}{{ employee.profile_pic }}" 
+                                         alt="{{ employee.emp_name }}'s photo"
+                                         class="profile-image">
+                                {% else %}
+                                    <img src="{% static 'images/default-avatar.png' %}" 
+                                         alt="Default photo"
+                                         class="profile-image">
+                                {% endif %}
+                            </div>
+                            <h3 class="employee-name">{{ employee.emp_name }}</h3>
+                            <p class="employee-id">ID: {{ employee.emp_id }}</p>
+                            <p class="employee-department">{{ employee.department }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employee Details and Attendance -->
+                <div class="col-md-8">
+                    <!-- Stats Cards -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card stat-card">
+                                <div class="card-body">
+                                    <h5 class="stat-title">Total Attendance</h5>
+                                    <p class="stat-value">{{ total_attendance }} days</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card stat-card">
+                                <div class="card-body">
+                                    <h5 class="stat-title">Department</h5>
+                                    <p class="stat-value">{{ employee.department }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Attendance -->
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="card-title">Recent Attendance History</h4>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Time In</th>
+                                            <th>Time Out</th>
+                                            <th>Working Hours</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for record in attendance_history %}
+                                        <tr>
+                                            <td>{{ record.date|date:"d M Y" }}</td>
+                                            <td>{{ record.time_in }}</td>
+                                            <td>{{ record.time_out }}</td>
+                                            <td>{{ record.working_hours }}</td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="4" class="text-center">No attendance records found</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Layout */
+    .main-content {
+        margin-left: 250px;
+        padding: 30px;
+        background: #f5f6fa;
+    }
+
+    /* Profile Card */
+    .profile-card {
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .profile-image-wrapper {
+        width: 150px;
+        height: 150px;
+        margin: 0 auto;
+        position: relative;
+    }
+
+    .profile-image {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #fff;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .employee-name {
+        color: #2c3e50;
+        font-size: 1.5rem;
+        margin: 15px 0 5px;
+    }
+
+    .employee-id {
+        color: #7f8c8d;
+        font-size: 1rem;
+        margin-bottom: 5px;
+    }
+
+    .employee-department {
+        color: #3498db;
+        font-weight: 500;
+    }
+
+    /* Stats Cards */
+    .stat-card {
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-title {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin-bottom: 5px;
+    }
+
+    .stat-value {
+        color: #2c3e50;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    /* Table Styling */
+    .table {
+        margin-bottom: 0;
+    }
+
+    .table thead th {
+        background: #f8f9fa;
+        color: #2c3e50;
+        font-weight: 600;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .table td {
+        vertical-align: middle;
+        color: #2c3e50;
+    }
+
+    /* Back Button */
+    .btn-outline-primary {
+        color: #3498db;
+        border-color: #3498db;
+        transition: all 0.3s ease;
+    }
+
+    .btn-outline-primary:hover {
+        background: #3498db;
+        color: white;
+    }
+</style>
+{% endblock %}
