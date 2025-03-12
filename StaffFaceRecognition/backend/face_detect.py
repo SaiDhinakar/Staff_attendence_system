@@ -269,12 +269,11 @@ def video_capture():
         "appsink drop=1"
     )
 
-    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    # cap.set(cv2.CAP_PROP_FPS, 30)
-    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     if not cap.isOpened():
         print("\u274c Could not open camera. Exiting.")
         return
