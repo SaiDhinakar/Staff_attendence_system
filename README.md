@@ -74,7 +74,7 @@ A robust attendance management system that uses facial recognition to automatica
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/staff_attendance_system.git
+git clone https://github.com/drackko/staff_attendance_system.git
 ```
 
 2. Create virtual environment:
@@ -107,7 +107,7 @@ python manage.py runserver
 
 2. Start Face Recognition backend:
 ```bash
-python backend/face_detect.py
+python backend/face_detector.py
 ```
 
 ## 📂 Project Structure
@@ -116,8 +116,8 @@ python backend/face_detect.py
 Staff_attendance_system/
 |
 ├── backend/
-│   ├── face_detect.py
-│   └── staff_embeddings.json
+│   ├── face_detector.py
+│   └── face_embeddings.json
 ├── Home/
 │   ├── views.py
 │   ├── models.py
@@ -132,7 +132,7 @@ Staff_attendance_system/
 Key settings can be modified in:
 - `settings.py`: Django configuration
 - `face_detect.py`: Recognition parameters
-- `staff_embeddings.json`: Embedding storage
+- `face_embeddings.json`: Embedding storage
 
 ## 🔐 Security Features
 
