@@ -7,12 +7,11 @@ A robust attendance management system that uses facial recognition to automatica
 - Real-time face detection and recognition
 - Automated attendance marking
 - Web-based admin interface
-- Employee management (add/delete/update)
-- Attendance reports and analytics
-- Multi-face detection support
 - High accuracy face recognition using deep learning
 - Background task processing for face embeddings
-- Profile photo management
+- Employee Profile management
+- Employee management (add/delete/update)
+- Attendance reports and analytics
 
 ## 🏗️ System Architecture
 
@@ -21,7 +20,7 @@ A robust attendance management system that uses facial recognition to automatica
    - Employee management
    - Attendance records
    - Report generation
-   - Profile photo management
+   - Employee profile management
 
 2. **Face Recognition Backend (FastAPI)**
    - Real-time video processing
