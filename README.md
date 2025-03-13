@@ -90,6 +90,7 @@ pip install -r requirements.txt
 
 4. Database setup:
 ```bash
+python manage.py makemigrations
 python manage.py migrate
 ```
 
@@ -123,7 +124,7 @@ Staff_attendance_system/
 │   ├── models.py
 │   └── urls.py
 ├── media/
-│   └── employee_photos/
+│   └── profile_pics/ # employees profile pictures will be stored here
 └── requirements.txt
 ```
 
