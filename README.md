@@ -114,16 +114,16 @@ python backend/face_detect.py
 
 ```
 Staff_attendance_system/
-├── StaffFaceRecognition/
-│   ├── backend/
-│   │   ├── face_detect.py
-│   │   └── staff_embeddings.json
-│   ├── Home/
-│   │   ├── views.py
-│   │   ├── models.py
-│   │   └── urls.py
-│   └── media/
-│       └── employee_photos/
+|
+├── backend/
+│   ├── face_detect.py
+│   └── staff_embeddings.json
+├── Home/
+│   ├── views.py
+│   ├── models.py
+│   └── urls.py
+├── media/
+│   └── employee_photos/
 └── requirements.txt
 ```
 
