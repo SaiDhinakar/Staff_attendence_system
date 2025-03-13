@@ -185,20 +185,20 @@ def export_report(request):
         messages.error(request, 'Failed to export report')
         return redirect('report')
 
-def store_embeddings(db_path, output_file="backend/staff_embeddings.json"):
+def store_embeddings(db_path, output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:5600/store_embeddings/"
     payload = {"db_path": db_path, "output_file": output_file}
     response = requests.post(url, json=payload)  # Sending as JSON body
     return response.json()
 
 
-def load_embeddings(output_file="backend/staff_embeddings.json"):
+def load_embeddings(output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:5600/load_embeddings/"
     params = {"input_file": output_file}
     response = requests.get(url, params=params)
     return response.json()
 
-async def store_embeddings_async(db_path, output_file="backend/staff_embeddings.json"):
+async def store_embeddings_async(db_path, output_file="backend/face_embeddings.json"):
     url = "http://127.0.0.1:5600/store_embeddings/"
     payload = {"db_path": db_path, "output_file": output_file}
 
@@ -254,7 +254,7 @@ def process_images_async(temp_dir, images):
 @login_required
 @user_passes_test(is_superuser)
 def manage_employees(request):
-    embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'staff_embeddings.json')
+    embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
     if request.method == 'POST':
         action = request.POST.get('action')
         if action == 'add':
@@ -315,8 +315,8 @@ def manage_employees(request):
                         shutil.rmtree(employee_images_path)
                         logger.info(f"Deleted image directory for employee {emp_id}")
                         
-                    # 2. Delete embeddings from staff_embeddings.json
-                    embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'staff_embeddings.json')
+                    # 2. Delete embeddings from face_embeddings.json
+                    embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
                     if os.path.exists(embeddings_file):
                         try:
                             with open(embeddings_file, 'r') as f:
