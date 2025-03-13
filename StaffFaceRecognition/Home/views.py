@@ -268,7 +268,7 @@ def manage_employees(request):
                         messages.error(request, f'Employee with ID {emp_id} already exists.')
                         return redirect('manage_employees')
 
-                    # Create employee record first
+                    # Create employee record
                     employee = Employee.objects.create(
                         emp_id=emp_id,
                         emp_name=emp_name,
@@ -278,21 +278,42 @@ def manage_employees(request):
                     # Handle image uploads
                     images = request.FILES.getlist('images')
                     if images:
-                        temp_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
-                        os.makedirs(temp_dir, exist_ok=True)
+                        # Create profile pics directory if it doesn't exist
+                        profile_pics_dir = os.path.join(settings.MEDIA_ROOT, 'profile_pics')
+                        os.makedirs(profile_pics_dir, exist_ok=True)
 
-                        # Save images in parallel
-                        image_paths = process_images_async(temp_dir, images)
+                        # Save first image as profile picture with correct extension
+                        profile_pic = images[0]
+                        extension = os.path.splitext(profile_pic.name)[1].lower()
+                        if extension not in ['.jpg', '.jpeg', '.png']:
+                            extension = '.jpg'  # Default to jpg if unknown extension
+                        profile_pic_path = os.path.join(profile_pics_dir, f"{emp_id}{extension}")
+                        
+                        # Save profile picture
+                        with open(profile_pic_path, 'wb+') as destination:
+                            for chunk in profile_pic.chunks():
+                                destination.write(chunk)
 
-                        # Create background task
+                        # Create directory for training images
+                        training_dir = os.path.join(settings.MEDIA_ROOT, emp_id)
+                        os.makedirs(training_dir, exist_ok=True)
+
+                        # Save all images (including first) for training
+                        for img in images:
+                            img_path = os.path.join(training_dir, img.name)
+                            with open(img_path, 'wb+') as destination:
+                                for chunk in img.chunks():
+                                    destination.write(chunk)
+
+                        # Process embeddings in background
                         async_to_sync(process_embeddings_background)(
                             emp_id=emp_id,
-                            temp_dir=temp_dir,
+                            temp_dir=training_dir,
                             media_root=settings.MEDIA_ROOT,
                             embeddings_file=embeddings_file
                         )
 
-                        messages.success(request, 'Employee added successfully. Face embeddings are being processed in background...')
+                        messages.success(request, 'Employee added successfully. Face embeddings are being processed...')
                     else:
                         messages.success(request, 'Employee added successfully.')
 
@@ -314,7 +335,16 @@ def manage_employees(request):
                     if os.path.exists(employee_images_path):
                         shutil.rmtree(employee_images_path)
                         logger.info(f"Deleted image directory for employee {emp_id}")
-                        
+
+                    # Delete profile picture
+                    profile_pics_dir = os.path.join(settings.MEDIA_ROOT, 'profile_pics')
+                    for ext in ['.jpg', '.jpeg', '.png']:
+                        profile_pic_path = os.path.join(profile_pics_dir, f"{emp_id}{ext}")
+                        if os.path.exists(profile_pic_path):
+                            os.remove(profile_pic_path)
+                            logger.info(f"Deleted profile picture for employee {emp_id}")
+                            break
+                            
                     # 2. Delete embeddings from face_embeddings.json
                     embeddings_file = os.path.join(settings.BASE_DIR, 'backend', 'face_embeddings.json')
                     if os.path.exists(embeddings_file):

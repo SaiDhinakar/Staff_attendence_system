@@ -274,6 +274,9 @@ def video_capture():
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    
+    # cap = cv2.VideoCapture(0)  #for webcam testing
+
     if not cap.isOpened():
         print("\u274c Could not open camera. Exiting.")
         return
@@ -403,6 +406,10 @@ def store_embeddings(db_path, output_file):
     resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
     for identity in os.listdir(db_path):
+        # Skip the profile_pics directory
+        if identity == 'profile_pics':
+            continue
+            
         identity_path = os.path.join(db_path, identity)
         if os.path.isdir(identity_path):
             for image_name in os.listdir(identity_path):
