@@ -20,7 +20,6 @@ from typing import Dict
 import asyncio
 import logging
 from fastapi import BackgroundTasks
-import concurrent.futures
 
 app = FastAPI()
 
@@ -236,7 +235,6 @@ latest_detected_ids = []
 latest_detection_times = {}
 last_attendance_time: Dict[str, datetime] = {}
 MIN_ATTENDANCE_INTERVAL = timedelta(minutes=1)  # Minimum time between attendance marks
-executor = concurrent.futures.ThreadPoolExecutor()
 
 def reset_camera():
     """Force reset the Jetson camera pipeline to fix stream issues."""
@@ -319,18 +317,12 @@ def video_capture():
         loop.close()
         print("\U0001f504 Camera resources released.")
 
-def encode_frame(frame):
-    """Offload encoding to a thread to avoid blocking the event loop."""
-    return face_detector.encode_image(frame)
-
 def generate_video_stream():
     """Generate a continuous video stream with detection results."""
     while True:
         if latest_frame is not None:
-            #encoded_frame = face_detector.encode_image(latest_frame)
-            loop = asyncio.get_running_loop()
-            encoded_frame = await loop.run_in_executor(executor, encode_frame, latest_frame)
-
+            encoded_frame = face_detector.encode_image(latest_frame)
+            
             # Add event type for different messages
             frame_data = {
                 "type": "frame_update",
@@ -341,8 +333,7 @@ def generate_video_stream():
                 }
             }
             yield f"data: {json.dumps(frame_data)}\n\n"
-        # time.sleep(0.01)
-        await asyncio.sleep(0.001)  # Use async sleep to avoid blocking
+        time.sleep(0.01)
 
 
 def save_attendance(emp_id, detection_time, check_type):
@@ -546,12 +537,7 @@ async def check_out():
 @app.get('/video_stream')
 async def video_stream():
     """Stream video with face detection results to the client."""
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive"
-    }
-    # return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
-    return StreamingResponse(generate_video_stream(), media_type='text/event-stream', headers=headers)
+    return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
 
 async def process_automatic_attendance(identity: str, detection_data: dict):
