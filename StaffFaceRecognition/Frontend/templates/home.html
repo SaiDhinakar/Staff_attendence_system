@@ -66,6 +66,15 @@
         <div class="stream-content">
           <img id="video-frame" src="" alt="Video Stream"/>
         </div>
+        <div id="stream-debug" style="
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+    font-size: 12px;
+    color: #666;
+"></div>
+
            <!-- Check-In / Check-Out Buttons -->
     <div class="checkin-checkout-buttons">
       <button class="btn-checkin" onclick="checkIn()">
@@ -142,35 +151,187 @@
         .catch(error => console.error('Error Fetching environment variable:',error));
 
 	console.log("URL : ",IP);
-    document.addEventListener("DOMContentLoaded", function () {
-      const videoFrame = document.getElementById("video-frame");
-      function startStream() {
-        const eventSource = new EventSource(`http://${IP}:5600/video_stream`);
+    // document.addEventListener("DOMContentLoaded", function () {
+    //   const videoFrame = document.getElementById("video-frame");
+    //   function startStream() {
+    //     const eventSource = new EventSource(`http://${IP}:5600/video_stream`);
 
-        eventSource.onmessage = function (event) {          try {
-            let frameData = JSON.parse(event.data);
+    //     eventSource.onmessage = function (event) {          try {
+    //         let frameData = JSON.parse(event.data);
 
-            if (frameData.image) {
-              videoFrame.src = "data:image/jpeg;base64," + frameData.image;
-            } else {
-              console.error("No image data received.");
-            }
-          } catch (error) {
-            console.error("Error parsing stream data:", error);
-          }
-        };
+    //         if (frameData.image) {
+    //           videoFrame.src = "data:image/jpeg;base64," + frameData.image;
+    //         } else {
+    //           console.error("No image data received.");
+    //         }
+    //       } catch (error) {
+    //         console.error("Error parsing stream data:", error);
+    //       }
+    //     };
 
-        eventSource.onerror = function () {
-          console.error("Stream Disconnected. Retrying...");
-          eventSource.close();
-          setTimeout(startStream, 3000);  // Reconnect after 3 seconds
-        };
-      }
+    //     eventSource.onerror = function () {
+    //       console.error("Stream Disconnected. Retrying...");
+    //       eventSource.close();
+    //       setTimeout(startStream, 3000);  // Reconnect after 3 seconds
+    //     };
+    //   }
 
-      startStream(); // Start the stream when the page loads
-    });
+    //   startStream(); // Start the stream when the page loads
+    // });
 
      // Add this JavaScript to your home.html
+
+     document.addEventListener('DOMContentLoaded', function() {
+            // Elements
+            const videoElement = document.getElementById('video-stream');
+            const detectionElement = document.getElementById('detection-id');
+            const logElement = document.getElementById('log-container');
+            const frameCountElement = document.getElementById('frame-count');
+            const connectionStatusElement = document.getElementById('connection-status');
+            const lastDetectionElement = document.getElementById('last-detection');
+            const frameRateElement = document.getElementById('frame-rate');
+            
+            // Buttons
+            const connectButton = document.getElementById('connect-btn');
+            const disconnectButton = document.getElementById('disconnect-btn');
+            const clearLogButton = document.getElementById('clear-log');
+            
+            // Stats
+            let frameCount = 0;
+            let startTime = performance.now();
+            let eventSource = null;
+            
+            // Log function
+            function log(message, type = 'info') {
+                const entry = document.createElement('div');
+                entry.className = type;
+                entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+                logElement.appendChild(entry);
+                logElement.scrollTop = logElement.scrollHeight;
+            }
+            
+            // Update stats
+            function updateStats() {
+                frameCountElement.textContent = frameCount;
+                
+                const elapsedSeconds = (performance.now() - startTime) / 1000;
+                if (elapsedSeconds > 0) {
+                    frameRateElement.textContent = (frameCount / elapsedSeconds).toFixed(2);
+                }
+            }
+            
+            // Connect to stream
+            function connectToStream() {
+                // Reset stats
+                frameCount = 0;
+                startTime = performance.now();
+                updateStats();
+                
+                log('Connecting to video stream...', 'info');
+                connectionStatusElement.textContent = 'Connecting...';
+                
+                // Create event source
+                try {
+                    eventSource = new EventSource('http://localhost:5600/video_stream');
+                    
+                    eventSource.onopen = function() {
+                        log('Connection established', 'success');
+                        connectionStatusElement.textContent = 'Connected';
+                        setupAttendanceListener(); // Setup the attendance listener after connection
+                    };
+                    
+                    eventSource.onmessage = function(event) {
+                        try {
+                            const data = JSON.parse(event.data);
+                            
+                            // Alternative image display method
+                            if (data.type === 'frame_update') {
+                                const imageData = data.data.image;
+                                if (imageData) {
+                                    // Create a new image element
+                                    const img = new Image();
+                                    img.onload = function() {
+                                        // Draw to canvas instead of setting src
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = img.width;
+                                        canvas.height = img.height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0);
+                                        
+                                        // Replace existing image with canvas
+                                        const container = videoElement.parentNode;
+                                        container.replaceChild(canvas, videoElement);
+                                        videoElement = canvas;
+                                        
+                                        log('Frame displayed via canvas', 'success');
+                                        frameCount++;
+                                    };
+                                    
+                                    img.onerror = function() {
+                                        log('Failed to load image data', 'error');
+                                        console.error("Image data:", imageData.substring(0, 100) + "...");
+                                    };
+                                    
+                                    // Set source
+                                    img.src = 'data:image/jpeg;base64,' + imageData;
+                                }
+                            } 
+                            else if (data.type === 'heartbeat') {
+                                log('Heartbeat received', 'info');
+                            }
+                            else if (data.type === 'stream_error') {
+                                log(`Stream error: ${data.data.message}`, 'error');
+                            }
+                            
+                        } catch (error) {
+                            log(`Error parsing message: ${error}`, 'error');
+                        }
+                        updateDebug(`Frame received: ${data.type}`);
+                    };
+                    
+                    eventSource.onerror = function(error) {
+                        log(`Connection error: ${error.type}`, 'error');
+                        connectionStatusElement.textContent = 'Error';
+                    };
+                    
+                } catch (error) {
+                    log(`Failed to create connection: ${error}`, 'error');
+                }
+            }
+            
+            // Disconnect from stream
+            function disconnectFromStream() {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                    log('Disconnected from stream', 'info');
+                    connectionStatusElement.textContent = 'Disconnected';
+                }
+            }
+            
+            // Button event handlers
+            connectButton.addEventListener('click', connectToStream);
+            disconnectButton.addEventListener('click', disconnectFromStream);
+            clearLogButton.addEventListener('click', () => {
+                logElement.innerHTML = '';
+                log('Log cleared', 'info');
+            });
+
+            document.getElementById('test-api-btn').addEventListener('click', function() {
+                fetch('http://localhost:5600/health')
+                    .then(response => response.json())
+                    .then(data => {
+                        log(`API connected successfully: ${JSON.stringify(data)}`, 'success');
+                    })
+                    .catch(error => {
+                        log(`API connection failed: ${error}`, 'error');
+                    });
+            });
+            
+            // Connect on page load
+            connectToStream();
+        });
+   
 
 function showProcessingOverlay() {
     const streamContent = document.querySelector('.stream-content');
@@ -288,17 +449,19 @@ function showResult(message, isSuccess, employeeData) {
         }
     }, 5000);
 }
-
-// Add this after the existing eventSource.onmessage handler
-
-eventSource.addEventListener('attendance_update', function(event) {
-    try {
-        const data = JSON.parse(event.data);
-        updateAttendanceTable(data);
-    } catch (error) {
-        console.error('Error handling attendance update:', error);
+// Add attendance update listener when connecting
+function setupAttendanceListener() {
+    if (eventSource) {
+        eventSource.addEventListener('attendance_update', function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                updateAttendanceTable(data);
+            } catch (error) {
+                console.error('Error handling attendance update:', error);
+            }
+        });
     }
-});
+}
 
 function updateAttendanceTable(record) {
     const tableBody = document.querySelector('.attendance-table tbody');
@@ -339,6 +502,109 @@ function updateAttendanceTable(record) {
         presentCountElement.textContent = currentCount + 1;
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const videoFrame = document.getElementById("video-frame");
+    
+    function startStream() {
+        console.log("Starting video stream...");
+        const eventSource = new EventSource(`http://${IP}:5600/video_stream`);
+        
+        eventSource.onopen = function() {
+            console.log("Connection established to video stream");
+        };
+        
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'frame_update') {
+                    // Update video frame
+                    videoFrame.src = "data:image/jpeg;base64," + data.data.image;
+                    
+                    // Check for detection events
+                    if (data.data.detection && data.data.detection !== "Unknown") {
+                        console.log("Detection:", data.data.detection);
+                    }
+                    
+                    // Check for detection events to show notifications
+                    if (data.detection_event) {
+                        showEmployeeDetection(data.detection_event);
+                    }
+                } 
+                else if (data.type === 'attendance_update') {
+                    // Update the attendance table
+                    updateAttendanceTable(data.data);
+                }
+                
+            } catch (error) {
+                console.error("Error parsing stream data:", error);
+            }
+            updateDebug(`Frame received: ${data.type}`);
+        };
+        
+        eventSource.onerror = function(error) {
+            console.error("Stream connection error:", error);
+            eventSource.close();
+            setTimeout(startStream, 3000); // Reconnect after 3 seconds
+        };
+    }
+    
+    // Start the stream
+    startStream();
+    
+    // Function to show employee detection notification
+    function showEmployeeDetection(employee) {
+        const notificationDiv = document.createElement('div');
+        notificationDiv.className = 'attendance-mark-animation';
+        notificationDiv.innerHTML = `
+            <strong>Employee Detected!</strong>
+            <p>${employee.emp_name}</p>
+            <p>${employee.emp_id}</p>
+        `;
+        
+        document.querySelector('.stream-content').appendChild(notificationDiv);
+        
+        setTimeout(() => {
+            notificationDiv.remove();
+        }, 2000);
+    }
+});
+
+function updateDebug(message) {
+    const debugElement = document.getElementById('stream-debug');
+    if (debugElement) {
+        const timestamp = new Date().toLocaleTimeString();
+        debugElement.innerHTML = `[${timestamp}] ${message}<br>` + 
+            debugElement.innerHTML.split('<br>').slice(0, 5).join('<br>');
+    }
+}
+
+eventSource.onmessage = function(event) {
+    try {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'frame_update') {
+            // Display video frame
+            videoElement.src = 'data:image/jpeg;base64,' + data.data.image;
+            
+            // Update detection display
+            const detection = data.data.detection;
+            if (detection !== 'Unknown') {
+                // Found an employee
+                detectionElement.textContent = detection;
+                detectionElement.style.color = '#4caf50'; // Green
+            } else {
+                // No detection
+                detectionElement.textContent = 'Unknown';
+                detectionElement.style.color = '#666';
+            }
+        } 
+    } catch (error) {
+        console.error('Error handling message:', error);
+    }
+};
  </script>
 
   <style>
