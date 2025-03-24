@@ -20,6 +20,7 @@ from typing import Dict
 import asyncio
 import logging
 from fastapi import BackgroundTasks
+from PIL import Image, ImageEnhance  
 
 app = FastAPI()
 
@@ -61,8 +62,17 @@ class FaceDetect:
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print(f'Running on device: {self.device}')
 
-        # Initialize models
-        self.mtcnn = MTCNN(keep_all=True, device=self.device)
+        # Initialize models with improved parameters
+        self.mtcnn = MTCNN(
+            image_size=160,
+            margin=20,
+            min_face_size=50,
+            thresholds=[0.6, 0.7, 0.9],
+            factor=0.709,
+            post_process=True,
+            keep_all=True, 
+            device=self.device
+        )
         self.resnet = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
 
         # Load known embeddings
@@ -71,6 +81,11 @@ class FaceDetect:
         
         # Add batch processing capabilities
         self.batch_size = 32  # Adjust based on your GPU memory
+        
+        # Add adaptive threshold capabilities
+        self.initial_threshold = 0.7  # Start with more permissive threshold
+        self.current_threshold = self.initial_threshold
+        self.confidence_history = []
 
     def load_embeddings(self):
         """Load face embeddings from a JSON file."""
@@ -131,7 +146,14 @@ class FaceDetect:
         global latest_detection_data, latest_detection_times, latest_frame, latest_detected_ids
         
         try:
+            # Convert frame to RGB for better processing
             img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            
+            # Enhance image quality
+            img = ImageEnhance.Contrast(img).enhance(1.1)
+            img = ImageEnhance.Brightness(img).enhance(1.05)
+            
+            # Detect faces
             boxes, _ = self.mtcnn.detect(img)
             
             # Initialize with Unknown detection
@@ -146,31 +168,46 @@ class FaceDetect:
                 best_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
                 x1, y1, x2, y2 = map(int, best_box)
                 
+                # Add a margin around the face for better recognition
+                margin = int((x2 - x1) * 0.2)  # 20% margin
+                x1 = max(0, x1 - margin)
+                y1 = max(0, y1 - margin)
+                x2 = min(img.width, x2 + margin)
+                y2 = min(img.height, y2 + margin)
+                
                 # Crop and process the face
                 face_img = img.crop((x1, y1, x2, y2))
                 
-                # Get face tensor but DON'T use unsqueeze - this causes the dimension error
+                # Run face through MTCNN again for better alignment
                 face_tensor = self.mtcnn(face_img)
                 
                 if face_tensor is not None:
-                    # Important: Log the tensor shape for debugging
-                    logger.debug(f"Face tensor shape: {face_tensor.shape}")
+                    # Multiple recognition attempts with slightly different parameters
+                    identity1, dist1 = self.recognize_face(face_tensor)
                     
-                    # Recognize the face - face_tensor is already properly batched
-                    identity, dist = self.recognize_face(face_tensor)
-                    confidence = 1 - dist if identity != "Unknown" else None
+                    # Try a second time with increased contrast
+                    enhanced_face = ImageEnhance.Contrast(face_img).enhance(1.3)
+                    face_tensor2 = self.mtcnn(enhanced_face)
+                    identity2, dist2 = self.recognize_face(face_tensor2) if face_tensor2 is not None else ("Unknown", 1.0)
                     
-                    # Update detection data with results
-                    detection_data = {
-                        "identity": identity, 
-                        "confidence": confidence,
-                        "time": datetime.now().strftime("%H:%M:%S")
-                    }
+                    # Choose the better result
+                    if dist1 <= dist2:
+                        identity, confidence = identity1, 1 - dist1
+                    else:
+                        identity, confidence = identity2, 1 - dist2
                     
-                    # Draw bounding box on frame for visualization
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, identity, (x1, y1 - 10), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                    if identity != "Unknown":
+                        # Update detection data with results
+                        detection_data = {
+                            "identity": identity, 
+                            "confidence": confidence,
+                            "time": datetime.now().strftime("%H:%M:%S")
+                        }
+                        
+                        # Draw bounding box on frame for visualization
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, f"{identity}: {confidence:.2%}", (x1, y1 - 10), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
             # Update global variables
             latest_detection_data = detection_data
@@ -443,7 +480,9 @@ def store_embeddings(db_path, output_file):
     embeddings = defaultdict(list, existing_embeddings)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    mtcnn = MTCNN(image_size=160, margin=0, keep_all=False, device=device)
+    # Use higher quality settings for face detection during embedding generation
+    mtcnn = MTCNN(image_size=160, margin=20, min_face_size=50, thresholds=[0.6, 0.7, 0.9], 
+                  factor=0.709, post_process=True, keep_all=False, device=device)
     resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
     for identity in os.listdir(db_path):
@@ -457,6 +496,10 @@ def store_embeddings(db_path, output_file):
                 image_path = os.path.join(identity_path, image_name)
                 try:
                     img = Image.open(image_path).convert('RGB')
+                    # Apply image enhancement
+                    img = ImageEnhance.Contrast(img).enhance(1.2)
+                    img = ImageEnhance.Brightness(img).enhance(1.1)
+                    
                     img_cropped = mtcnn(img)
                     if img_cropped is not None:
                         img_embedding = resnet(img_cropped.unsqueeze(0).to(device)).detach().cpu().numpy().tolist()
@@ -574,10 +617,6 @@ async def check_out():
         logger.error(f"Check-out error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Check-out failed: {str(e)}")
 
-@app.get('/video_stream')
-async def video_stream():
-    """Stream video with face detection results to the client."""
-    return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
 async def process_automatic_attendance(identity: str, detection_data: dict):
     """Process automatic attendance based on face detection"""
