@@ -362,11 +362,13 @@ async def video_stream():
 
 def generate_video_stream():
     last_heartbeat = time.time()
+    frame_counter = 0
     
     while True:
         current_time = time.time()
+        frame_counter +=1
         
-        if latest_frame is not None:
+        if latest_frame is not None and frame_counter % 3 == 0:
             try:
                 # Resize for efficiency
                 frame_small = cv2.resize(latest_frame, (640, 480))
@@ -571,6 +573,7 @@ async def check_in():
     return {
         "status": "success",
         "message": "Checked in successfully",
+        "action_type": "check_in",  # Add this field
         "employee": {
             "name":name,
             "id": emp_id,
@@ -585,16 +588,14 @@ async def check_in():
 async def check_out():
     global latest_detection_times
 
-    print(f"latest_detection_times: {latest_detection_times}")  # Debugging
+    print(f"latest_detection_times: {latest_detection_times}")
     if not latest_detection_times:
         raise HTTPException(status_code=400, detail="No face detected")
 
     try:
-        # ✅ Fix: Properly get the latest detected employee ID
         emp_id, detection_data = next(iter(latest_detection_times.items()))
         employee_check_status[str(emp_id)]=False
 
-        # Use the improved database connection with retry
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
@@ -608,14 +609,15 @@ async def check_out():
 
         logger.info(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")
 
-        if detection_data["confidence"] < 0.4:  # Higher threshold for check-out
+        if detection_data["confidence"] < 0.4:
             raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
         save_attendance(emp_id, detection_data["time"], "check_out")
 
         return {
             "status": "success",
-            "message": "Checked out successfully",
+            "message": "Checked out successfully",  # This message will be used by frontend
+            "action_type": "check_out",  # Add this field to differentiate
             "employee": {
                 "name": name,
                 "id": emp_id,
