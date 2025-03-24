@@ -68,12 +68,17 @@ class FaceDetect:
         # Load known embeddings
         self.db_file = db_file
         self.embeddings = self.load_embeddings()
+        
+        # Add batch processing capabilities
+        self.batch_size = 32  # Adjust based on your GPU memory
 
     def load_embeddings(self):
+        """Load face embeddings from a JSON file."""
         if os.path.exists(self.db_file):
             with open(self.db_file, "r") as f:
                 return json.load(f)
         return {}
+        
     def reload_embeddings(self):
         """Reload face embeddings from the JSON file."""
         try:
@@ -88,7 +93,40 @@ class FaceDetect:
         except Exception as e:
             logger.error(f"Error reloading embeddings: {e}")
             return False
-        
+            
+    # Add this new method for batch processing
+    async def process_embeddings(self, image_paths):
+        """Process multiple images in batches"""
+        embeddings = []
+
+        # Process in batches
+        for i in range(0, len(image_paths), self.batch_size):
+            batch_paths = image_paths[i:i + self.batch_size]
+            batch_images = []
+
+            # Load and preprocess images
+            for path in batch_paths:
+                try:
+                    img = Image.open(path)
+                    face = self.mtcnn(img)
+                    if face is not None:
+                        batch_images.append(face)
+                except Exception as e:
+                    logger.error(f"Error processing image {path}: {e}")
+                    continue
+
+            if batch_images:
+                # Stack tensors for batch processing
+                batch_tensor = torch.stack(batch_images)
+
+                # Get embeddings for batch
+                with torch.no_grad():  # Disable gradient calculation
+                    batch_embeddings = self.resnet(batch_tensor.to(self.device))
+
+                embeddings.extend(batch_embeddings.cpu().numpy())
+
+        return embeddings
+
     async def process_frame(self, frame):
         global latest_detection_data, latest_detection_times, latest_frame, latest_detected_ids
         
@@ -153,9 +191,10 @@ class FaceDetect:
             return {"identity": "Unknown", "confidence": None, "time": datetime.now().strftime("%H:%M:%S")}
 
     def recognize_face(self, face_tensor):
+        """Compares face embeddings to known faces in the database."""
         if face_tensor is None:
             return "Unknown", None
-            
+
         try:
             # Make sure tensor has correct shape
             if len(face_tensor.shape) == 3:  # Single image, shape [C, H, W]
@@ -181,7 +220,8 @@ class FaceDetect:
                         min_dist = dist
                         identity = name
 
-            return (identity, min_dist) if min_dist <= 0.6 else ("Unknown", min_dist)
+            threshold = 0.6
+            return (identity, min_dist) if min_dist <= threshold else ("Unknown", min_dist)
             
         except Exception as e:
             logger.error(f"Error in recognize_face: {e}")
@@ -205,49 +245,79 @@ async def process_frame_wrapper(frame):
     except Exception as e:
         logger.error(f"Error in process_frame: {e}")
 
-async def video_capture():
+def reset_camera():
+    """Force reset the Jetson camera pipeline to fix stream issues."""
+    os.system("sudo systemctl restart nvargus-daemon")
+    time.sleep(2)  # Give time for the daemon to restart
+    logger.info("Camera reset completed.")
+
+def video_capture():
+    """Continuously capture and process video frames."""
     global latest_frame, latest_detected_ids, latest_detection_times
 
-    pipeline = (
-        "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
-        "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
-        "nvvidconv ! video/x-raw, format=BGRx ! "
-        "videoconvert ! video/x-raw, format=BGR ! "
-        "appsink drop=1"
-    )
-    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    # cap.set(cv2.CAP_PROP_FPS, 30)
-    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    # Create event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    cap = cv2.VideoCapture(0)
+    # pipeline = (
+    #     "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
+    #     "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
+    #     "nvvidconv ! video/x-raw, format=BGRx ! "
+    #     "videoconvert ! video/x-raw, format=BGR ! "
+    #     "appsink drop=1"
+    # )
+
+    # Use either GSTREAMER or fallback to regular webcam
+    try:
+        # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    except:
+        logger.warning("Gstreamer pipeline failed, falling back to regular webcam")
+        cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         logger.error("Could not open camera. Exiting.")
         return
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            logger.warning("Failed to grab frame, attempting reset.")
-            # reset_camera()
-            await asyncio.sleep(2)
-            # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-            cap = cv2.VideoCapture(0)
-            continue
+    try:
+        while True:
+            try:
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning("Failed to grab frame, attempting reset.")
+                    reset_camera()
+                    cap.release()
+                    time.sleep(2)
+                    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    continue
 
-        await process_frame_wrapper(frame)
-        await asyncio.sleep(0.01)
+                # Use the event loop to run async functions
+                loop.run_until_complete(process_frame_wrapper(frame))
 
-    cap.release()
-    cv2.destroyAllWindows()
+                if employee_check_status:
+                    if employee_check_status[str(latest_detected_ids)]:
+                        loop.run_until_complete(check_in())
+                    else:
+                        loop.run_until_complete(check_out())
 
+            except Exception as e:
+                logger.error(f"Error processing frame: {str(e)}")
+                time.sleep(1)
 
-def reset_camera():
-    os.system("sudo systemctl restart nvargus-daemon")
-    time.sleep(2)
-    logger.info("Camera reset completed.")
+    except KeyboardInterrupt:
+        logger.info("Stopping video capture...")
+    except Exception as e:
+        logger.error(f"Fatal error during capture: {str(e)}")
+    finally:
+        if 'cap' in locals() and cap is not None:
+            cap.release()
+            cv2.destroyAllWindows()
+        loop.close()
+        logger.info("Camera resources released.")
 
 @app.get('/video_stream')
 async def video_stream():
@@ -366,7 +436,7 @@ def store_embeddings(db_path, output_file):
         return {"error": "Dataset path does not exist"}
 
     existing_embeddings = {}
-    if os.path.exists(output_file):
+    if (os.path.exists(output_file)):
         with open(output_file, 'r') as f:
             existing_embeddings = json.load(f)
 
@@ -462,44 +532,48 @@ async def check_out():
     global latest_detection_times
 
     print(f"latest_detection_times: {latest_detection_times}")  # Debugging
-
     if not latest_detection_times:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    # ✅ Fix: Properly get the latest detected employee ID
-    emp_id, detection_data = next(iter(latest_detection_times.items()))
-    employee_check_status[str(emp_id)]=False
+    try:
+        # ✅ Fix: Properly get the latest detected employee ID
+        emp_id, detection_data = next(iter(latest_detection_times.items()))
+        employee_check_status[str(emp_id)]=False
 
-    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
-    employee = cursor.fetchone()
-    conn.close()
+        # Use the improved database connection with retry
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
+        employee = cursor.fetchone()
+        conn.close()
 
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
 
-    name, department = employee
+        name, department = employee
 
-    print(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")  # Debugging
+        logger.info(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")
 
-    if detection_data["confidence"] < 0.4:  # Higher threshold for check-out
-        raise HTTPException(status_code=400, detail="Face recognition confidence too low")
+        if detection_data["confidence"] < 0.4:  # Higher threshold for check-out
+            raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
-    save_attendance(emp_id, detection_data["time"], "check_out")
+        save_attendance(emp_id, detection_data["time"], "check_out")
 
-    return {
-        "status": "success",
-        "message": "Checked out successfully",
-        "employee": {
-           "name":name,
-            "id": emp_id,
-            "department":department,
-            "confidence": f"{detection_data['confidence']:.2%}",
-            "time": detection_data["time"]
+        return {
+            "status": "success",
+            "message": "Checked out successfully",
+            "employee": {
+                "name": name,
+                "id": emp_id,
+                "department": department,
+                "confidence": f"{detection_data['confidence']:.2%}",
+                "time": detection_data["time"]
+            }
         }
-    }
+    except Exception as e:
+        logger.error(f"Check-out error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Check-out failed: {str(e)}")
+
 @app.get('/video_stream')
 async def video_stream():
     """Stream video with face detection results to the client."""
@@ -667,7 +741,8 @@ def get_db_connection(max_retries=3, retry_delay=1):
     """Get database connection with retry mechanism"""
     for attempt in range(max_retries):
         try:
-            conn = sqlite3.connect(r"../db.sqlite3")
+            db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
+            conn = sqlite3.connect(db_path)
             return conn
         except sqlite3.Error as e:
             if attempt == max_retries - 1:
@@ -675,7 +750,6 @@ def get_db_connection(max_retries=3, retry_delay=1):
                 raise
             logger.warning(f"Database connection attempt {attempt + 1} failed, retrying...")
             time.sleep(retry_delay)
-
 
 @app.post("/reload-embeddings")
 async def reload_embeddings(background_tasks: BackgroundTasks):

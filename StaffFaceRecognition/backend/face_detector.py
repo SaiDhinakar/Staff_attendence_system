@@ -261,15 +261,16 @@ def video_capture():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    pipeline = (
-        "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
-        "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
-        "nvvidconv ! video/x-raw, format=BGRx ! "
-        "videoconvert ! video/x-raw, format=BGR ! "
-        "appsink drop=1"
-    )
+    # pipeline = (
+        # "nvarguscamerasrc sensor-id=0 sensor-mode=3 ! "
+    #     "video/x-raw(memory:NVMM), width=1920, height=1080, format=NV12, framerate=30/1 ! "
+    #     "nvvidconv ! video/x-raw, format=BGRx ! "
+    #     "videoconvert ! video/x-raw, format=BGR ! "
+    #     "appsink drop=1"
+    # )
 
-    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+    cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap.set(cv2.CAP_PROP_FPS, 30)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
