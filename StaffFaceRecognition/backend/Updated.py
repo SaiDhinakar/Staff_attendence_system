@@ -424,26 +424,33 @@ def save_attendance(emp_id, detection_time, check_type):
         current_date = datetime.now().strftime("%Y-%m-%d")
 
         # Check if the employee already has an attendance record for today
-        cursor.execute("SELECT emp_id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
+        cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
                     (emp_id, current_date))
         record = cursor.fetchone()
 
         if record:
             # Record exists, update time_in or time_out by appending new time
             attendance_id, time_in, time_out = record
+            
+            print(f"DEBUG - Updating attendance: ID={attendance_id}, check_type={check_type}")
+            print(f"DEBUG - Before update: time_in={time_in}, time_out={time_out}")
 
             if check_type == "check_in":
                 if time_in:
                     updated_time_in = f"{time_in},{detection_time}"
                 else:
                     updated_time_in = detection_time
-                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", (updated_time_in, attendance_id))
+                cursor.execute("UPDATE Home_attendance SET time_in_list = ? WHERE id = ?", 
+                              (updated_time_in, attendance_id))
+                print(f"DEBUG - Updated time_in to: {updated_time_in}")
             elif check_type == "check_out":
                 if time_out:
                     updated_time_out = f"{time_out},{detection_time}"
                 else:
                     updated_time_out = detection_time
-                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", (updated_time_out, attendance_id))
+                cursor.execute("UPDATE Home_attendance SET time_out_list = ? WHERE id = ?", 
+                              (updated_time_out, attendance_id))
+                print(f"DEBUG - Updated time_out to: {updated_time_out}")
 
         else:
             # Insert a new record with the first detection time
@@ -451,15 +458,19 @@ def save_attendance(emp_id, detection_time, check_type):
                 cursor.execute(
                     "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
                     (current_date, emp_id, detection_time, ''))
+                print(f"DEBUG - Created new check-in record for {emp_id}")
             elif check_type == "check_out":
                 cursor.execute(
                     "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
                     (current_date, emp_id, '', detection_time))
+                print(f"DEBUG - Created new check-out record for {emp_id}")
 
         conn.commit()
+        print(f"DEBUG - Database committed successfully")
+        return True
     except sqlite3.Error as e:
-            print(f"Database error: {e}")
-            raise HTTPException(status_code=500, detail="Database connection failed")
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
     finally:
         if conn:
             conn.close()
@@ -718,7 +729,7 @@ def calculate_working_hours(emp_id: str) -> str:
         
         # Convert to datetime
         time_in_dt = datetime.strptime(latest_in, "%H:%M:%S")
-        time_out_dt = datetime.strptime(latest_out, "%H:%M:%S")
+        time_out_dt = datetime.strptime(latest_out, "%H:%:M:%S")
         
         # Calculate duration
         duration = time_out_dt - time_in_dt
@@ -803,6 +814,42 @@ async def reload_embeddings(background_tasks: BackgroundTasks):
         logger.error(f"Error in reload endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get('/debug-attendance/{emp_id}')
+async def debug_attendance(emp_id: str):
+    """Debug endpoint to check attendance records."""
+    try:
+        conn = sqlite3.connect(r"../db.sqlite3")
+        cursor = conn.cursor()
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get attendance record
+        cursor.execute("""
+            SELECT id, emp_id, date, time_in_list, time_out_list 
+            FROM Home_attendance 
+            WHERE emp_id = ? AND date = ?
+        """, (emp_id, current_date))
+        
+        record = cursor.fetchone()
+        if record:
+            id, emp_id, date, time_in, time_out = record
+            return {
+                "status": "found",
+                "record": {
+                    "id": id,
+                    "emp_id": emp_id,
+                    "date": date,
+                    "time_in_list": time_in,
+                    "time_out_list": time_out
+                }
+            }
+        else:
+            return {"status": "not_found", "message": "No attendance record found for today"}
+            
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        if conn:
+            conn.close()
 
 
 if __name__ == '__main__':
