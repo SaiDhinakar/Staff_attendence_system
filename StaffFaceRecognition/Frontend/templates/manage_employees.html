@@ -238,14 +238,17 @@
                   "
                   onmouseover="this.style.transform='scale(1.1)'; this.style.zIndex='1000';"
                   onmouseout="this.style.transform='scale(1)'; this.style.zIndex='1';"
-                  data-default-avatar="{% static 'images/default-avatar.png' %}"
+                  data-default-avatar="{% static 'images/default-profile.jpg' %}"
                   onerror="this.onerror=null; this.src=this.getAttribute('data-default-avatar');"
                 />
                 {% else %}
                 <img
-                  src="{% static 'images/default-avatar.png' %}"
+                  src="{% static 'images/default-profile.jpg' %}"                   
                   alt="Default avatar"
-                  class="employee-image"
+                  style="width: 100px;
+                  height: 100px;
+                  object-fit: cover;
+                  border-radius: 50%;"
                 />
                 {% endif %}
               </td>

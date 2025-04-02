@@ -329,7 +329,8 @@ def video_capture():
                     reset_camera()
                     cap.release()
                     time.sleep(2)
-                    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    cap = cv2.VideoCapture(0)
                     continue
 
                 # Use the event loop to run async functions

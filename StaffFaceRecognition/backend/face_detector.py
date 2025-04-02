@@ -191,9 +191,10 @@ class FaceDetect:
 
     def encode_image(self, frame):
         """Convert frame to base64 encoded string."""
-        _, buffer = cv2.imencode('.jpg', frame)
+        _, buffer = cv2.imencode('.jpeg', frame)
         img_bytes = buffer.tobytes()
-        return base64.b64encode(img_bytes).decode('utf-8')
+        # return base64.b64encode(img_bytes).decode('utf-8')
+        return img_bytes
 
     async def process_embeddings(self, image_paths):
         """Process multiple images in batches"""
@@ -271,12 +272,10 @@ def video_capture():
 
     # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    
-    # cap = cv2.VideoCapture(0)  #for webcam testing
+    # cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # cap.set(cv2.CAP_PROP_FPS, 30)
+    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     if not cap.isOpened():
         print("\u274c Could not open camera. Exiting.")
@@ -288,20 +287,21 @@ def video_capture():
                 ret, frame = cap.read()
                 if not ret:
                     print("\u26a0\ufe0f Warning: Failed to grab frame.")
-                    reset_camera()
+                    # reset_camera()
                     cap.release()
                     time.sleep(2)
-                    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    # cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+                    cap = cv2.VideoCapture(0)
                     continue
 
                 # Use the event loop to run async functions
                 loop.run_until_complete(process_frame_wrapper(frame))
 
-                if employee_check_status:
-                    if employee_check_status[str(latest_detected_ids)]:
-                        loop.run_until_complete(check_in())
-                    else:
-                        loop.run_until_complete(check_out())
+                # if employee_check_status:
+                #     if employee_check_status[str(latest_detected_ids)]:
+                #         loop.run_until_complete(check_in())
+                #     else:
+                #         loop.run_until_complete(check_out())
 
             except Exception as e:
                 print(f"\u26a0\ufe0f Error processing frame: {str(e)}")
@@ -318,24 +318,57 @@ def video_capture():
         loop.close()
         print("\U0001f504 Camera resources released.")
 
-def generate_video_stream():
-    """Generate a continuous video stream with detection results."""
-    while True:
-        if latest_frame is not None:
-            encoded_frame = face_detector.encode_image(latest_frame)
+# def generate_video_stream():
+#     """Generate a continuous video stream with detection results."""
+#     while True:
+#         try:
+#             if latest_frame is not None:
+#                 # encoded_frame = face_detector.encode_image(latest_frame)
+#                 _, encoded_frame = cv2.imencode('jpeg', latest_frame)
+                
+#                 frame_data = {
+#                     "type": "frame_update",
+#                     "data": {
+#                         "image": encoded_frame.tobytes(),
+#                         "detection": latest_detected_ids,
+#                         "detection_times": latest_detection_times,
+#                         "timestamp": time.time()
+#                     }
+#                 }
+#                 yield f"data: {json.dumps(frame_data)}\n\n"
             
-            # Add event type for different messages
-            frame_data = {
-                "type": "frame_update",
-                "data": {
-                    "image": encoded_frame,
-                    "detection": latest_detected_ids,
-                    "timestamp": time.time()
-                }
-            }
-            yield f"data: {json.dumps(frame_data)}\n\n"
-        time.sleep(0.01)
-
+#             # Add a small delay to control frame rate
+#             time.sleep(0.033)  # ~30 FPS
+            
+#         except Exception as e:
+#             print(f"Error in video stream: {e}")
+#             # Send error event to client
+#             error_data = {
+#                 "type": "error",
+#                 "data": {"message": "Video stream error occurred"}
+#             }
+#             yield f"data: {json.dumps(error_data)}\n\n"
+#             time.sleep(1)  # Wait before retrying
+        
+def generate_video_stream():
+    """Generate a continuous MJPEG stream with detection results."""
+    while True:
+        try:
+            if latest_frame is not None:
+                # Convert frame to JPEG format
+                _, jpeg = cv2.imencode('.jpg', latest_frame)
+                frame_bytes = jpeg.tobytes()
+                
+                # Use multipart/x-mixed-replace format for MJPEG streaming
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            
+            # Small delay to control frame rate
+            time.sleep(0.033)  # ~30 FPS
+            
+        except Exception as e:
+            print(f"Error in video stream: {e}")
+            time.sleep(1)  # Wait before retrying
 
 def save_attendance(emp_id, detection_time, check_type):
     try:
@@ -725,7 +758,7 @@ async def reload_embeddings(background_tasks: BackgroundTasks):
         logger.error(f"Error in reload endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
+            
 if __name__ == '__main__':
     # Start video processing in a separate thread
     video_thread = threading.Thread(target=video_capture, daemon=True)
