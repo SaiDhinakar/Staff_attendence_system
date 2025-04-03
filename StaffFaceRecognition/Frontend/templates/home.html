@@ -568,4 +568,37 @@
 
 </script>
 
+<style>
+  /* Fix sidebar overlap issues specific to home page */
+  .container {
+    display: flex;
+    min-height: 100vh;
+    position: relative;
+  }
+  
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 150px;
+    height: 100vh;
+    z-index: 100;
+  }
+  
+  .main-content {
+    margin-left: 190px !important; /* Force margin with !important */
+    width: calc(100% - 190px);
+    position: relative;
+    z-index: 10;
+  }
+  
+  /* Ensure content is visible on mobile too */
+  @media (max-width: 768px) {
+    .main-content {
+      margin-left: 220px !important; /* Larger margin for mobile */
+      width: calc(100% - 220px);
+    }
+  }
+</style>
+
 {% endblock %}

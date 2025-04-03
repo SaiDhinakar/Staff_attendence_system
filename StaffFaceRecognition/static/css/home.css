@@ -9,7 +9,6 @@ body {
 
  /* Sidebar */
  .sidebar {
-  position: fixed;
   width: 150px;
   height: 100vh;
   background: #2c3e50;
@@ -93,6 +92,7 @@ body {
   flex: 1;
   padding: 30px;
   background: #f5f6fa;
+  margin-left: 190px; /* Add this line to offset content from sidebar */
 }
 
 .checkin-checkout-buttons {
