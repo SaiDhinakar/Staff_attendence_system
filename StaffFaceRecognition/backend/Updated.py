@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from collections import defaultdict
+from collections import defaultdict, deque
 import uvicorn
 from typing import Dict
 import asyncio
@@ -38,6 +38,48 @@ latest_detection_times = {}
 latest_frame = None
 latest_detected_ids = []
 logger = logging.getLogger(__name__)
+
+# Face recognition history buffer - stores recognized faces for 2 minutes
+face_recognition_history = {}
+RECOGNITION_HISTORY_TIMEOUT = 60  
+
+# manage the face recognition history
+def update_recognition_history(identity, confidence, face_image=None):
+    """
+    Update the face recognition history buffer.
+    Maintains recognized identities for 2 minutes.
+    """
+    global face_recognition_history
+    current_time = datetime.now()
+    
+    # Remove expired entries (older than 2 minutes)
+    expired_ids = []
+    for face_id in face_recognition_history:
+        if (current_time - face_recognition_history[face_id]['timestamp']).total_seconds() > RECOGNITION_HISTORY_TIMEOUT:
+            expired_ids.append(face_id)
+    
+    for face_id in expired_ids:
+        del face_recognition_history[face_id]
+    
+    # Add or update the current detection if it passes threshold
+    if identity != "Unknown" and confidence is not None and confidence >= 0.4:  # Same threshold as check-in
+        if identity not in face_recognition_history:
+            face_recognition_history[identity] = {
+                'identity': identity,
+                'confidence': confidence,
+                'timestamp': current_time,
+                'face_image': face_image,
+                'time': current_time.strftime("%H:%M:%S")
+            }
+        else:
+            # Update with higher confidence if found
+            if confidence > face_recognition_history[identity]['confidence']:
+                face_recognition_history[identity]['confidence'] = confidence
+                face_recognition_history[identity]['timestamp'] = current_time
+                face_recognition_history[identity]['face_image'] = face_image
+                face_recognition_history[identity]['time'] = current_time.strftime("%H:%M:%S")
+    
+    return face_recognition_history
 
 class RateLimiter:
     def __init__(self, interval):
@@ -204,10 +246,11 @@ class FaceDetect:
                             "time": datetime.now().strftime("%H:%M:%S")
                         }
                         
-                        # Draw bounding box on frame for visualization
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        cv2.putText(frame, f"{identity}: {confidence:.2%}", (x1, y1 - 10), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                        # Update recognition history
+                        update_recognition_history(identity, confidence, face_img)
+                        
+                        # Draw bounding box on frame for visualization (darker color, thicker line, no text)
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 120, 0), 4)
 
             # Update global variables
             latest_detection_data = detection_data
@@ -221,6 +264,13 @@ class FaceDetect:
             else:
                 latest_detection_times = {}
                 
+            # Update recognition history
+            update_recognition_history(
+                detection_data["identity"], 
+                detection_data["confidence"], 
+                face_img if detection_data["identity"] != "Unknown" else None
+            )
+            
             return detection_data
                 
         except Exception as e:
@@ -542,61 +592,175 @@ def load_embeddings(input_file: str = "face_embeddings.json"):
 
 @app.get('/check-in')
 async def check_in():
-    global latest_detection_times
+    global face_recognition_history, latest_detection_times
 
-    print(f"latest_detection_times: {latest_detection_times}")  # Debugging
-    if not latest_detection_times:
-        raise HTTPException(status_code=400, detail="No face detected")
+    # Check if we have recent face data
+    if not face_recognition_history and not latest_detection_times:
+        # If both are empty, check if there's any recent detection at all
+        if latest_detected_ids and latest_detected_ids != "Unknown":
+            # Create a basic detection record to use
+            detection_data = {
+                "identity": latest_detected_ids,
+                "confidence": 0.5,  # Default confidence
+                "time": datetime.now().strftime("%H:%M:%S")
+            }
+            return await process_single_checkin(latest_detected_ids, detection_data)
+        else:
+            raise HTTPException(status_code=400, detail="No faces detected. Please ensure your face is visible to the camera.")
 
-    # ✅ Fix: Properly get the latest detected employee ID
-    emp_id, detection_data = next(iter(latest_detection_times.items()))
-    employee_check_status[str(emp_id)]=True
-
-    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
-    employee = cursor.fetchone()
-    conn.close()
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    name, department = employee
-
-    print(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")  # Debugging
-
-    if detection_data["confidence"] < 0.4:
-        raise HTTPException(status_code=400, detail="Face recognition confidence too low")
-
-    save_attendance(emp_id, detection_data["time"], "check_in")
-
-    return {
-        "status": "success",
-        "message": "Checked in successfully",
-        "action_type": "check_in",  # Add this field
-        "employee": {
-            "name":name,
-            "id": emp_id,
-            "department":department,
-            "confidence": f"{detection_data['confidence']:.2%}",
-            "time": detection_data["time"]
-        }
-    }
-
+    # If we have face recognition history, use it
+    if face_recognition_history:
+        # Process all faces in the recognition history
+        results = []
+        current_time = datetime.now()
+        
+        for identity, data in face_recognition_history.items():
+            try:
+                # Set employee check status
+                employee_check_status[str(identity)] = True
+                
+                # Get employee details from DB
+                db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
+                employee = cursor.fetchone()
+                conn.close()
+                
+                if not employee:
+                    continue  # Skip if employee not found
+                    
+                name, department = employee
+                
+                # Allow check-in with any confidence level when explicitly initiated
+                # Remove this line: if data['confidence'] < 0.4:
+                    
+                # Save attendance
+                save_attendance(identity, data['time'], "check_in")
+                
+                # Add to results
+                results.append({
+                    "name": name,
+                    "id": identity,
+                    "department": department,
+                    "confidence": f"{data['confidence']:.2%}",
+                    "time": data['time']
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing check-in for {identity}: {e}")
+                # Continue processing other employees even if one fails
+        
+        # Clear history after processing
+        face_recognition_history.clear()
+        
+        if results:
+            # Return multiple results if available
+            return {
+                "status": "success",
+                "message": f"Checked in {len(results)} employee(s) successfully",
+                "action_type": "check_in",
+                "employees": results,
+                # Include the first employee separately for backward compatibility
+                "employee": results[0] if results else None
+            }
+    
+    # Fallback to latest detection if available
+    if latest_detection_times:
+        emp_id, detection_data = next(iter(latest_detection_times.items()))
+        employee_check_status[str(emp_id)] = True
+        return await process_single_checkin(emp_id, detection_data)
+        
+    # If we get here, we couldn't find any valid faces
+    raise HTTPException(status_code=400, detail="No recognizable faces found. Please ensure your face is visible to the camera.")
 
 @app.get('/check-out')
 async def check_out():
-    global latest_detection_times
+    global face_recognition_history, latest_detection_times
 
-    print(f"latest_detection_times: {latest_detection_times}")
-    if not latest_detection_times:
-        raise HTTPException(status_code=400, detail="No face detected")
+    # Check if we have recent face data
+    if not face_recognition_history and not latest_detection_times:
+        # If both are empty, check if there's any recent detection at all
+        if latest_detected_ids and latest_detected_ids != "Unknown":
+            # Create a basic detection record to use
+            detection_data = {
+                "identity": latest_detected_ids,
+                "confidence": 0.5,  # Default confidence
+                "time": datetime.now().strftime("%H:%M:%S")
+            }
+            return await process_single_checkout(latest_detected_ids, detection_data)
+        else:
+            raise HTTPException(status_code=400, detail="No faces detected. Please ensure your face is visible to the camera.")
 
-    try:
+    # If we have face recognition history, use it
+    if face_recognition_history:
+        # Process all faces in the recognition history
+        results = []
+        current_time = datetime.now()
+        
+        for identity, data in face_recognition_history.items():
+            try:
+                # Set employee check status
+                employee_check_status[str(identity)] = False
+                
+                # Get employee details from DB
+                db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
+                employee = cursor.fetchone()
+                conn.close()
+                
+                if not employee:
+                    continue  # Skip if employee not found
+                    
+                name, department = employee
+                
+                # Allow check-out with any confidence level when explicitly initiated
+                # Remove this line: if data['confidence'] < 0.4:
+                    
+                # Save attendance
+                save_attendance(identity, data['time'], "check_out")
+                
+                # Add to results
+                results.append({
+                    "name": name,
+                    "id": identity,
+                    "department": department,
+                    "confidence": f"{data['confidence']:.2%}",
+                    "time": data['time']
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing check-out for {identity}: {e}")
+                # Continue processing other employees even if one fails
+        
+        # Clear history after processing
+        face_recognition_history.clear()
+        
+        if results:
+            # Return multiple results if available
+            return {
+                "status": "success",
+                "message": f"Checked out {len(results)} employee(s) successfully",
+                "action_type": "check_out",
+                "employees": results,
+                # Include the first employee separately for backward compatibility
+                "employee": results[0] if results else None
+            }
+    
+    # Fallback to latest detection if available
+    if latest_detection_times:
         emp_id, detection_data = next(iter(latest_detection_times.items()))
-        employee_check_status[str(emp_id)]=False
+        employee_check_status[str(emp_id)] = False
+        return await process_single_checkout(emp_id, detection_data)
+        
+    # If we get here, we couldn't find any valid faces
+    raise HTTPException(status_code=400, detail="No recognizable faces found. Please ensure your face is visible to the camera.")
 
+# Add this helper function for single check-outs
+async def process_single_checkout(emp_id, detection_data):
+    try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
@@ -608,8 +772,6 @@ async def check_out():
 
         name, department = employee
 
-        logger.info(f"Detected emp_id: {emp_id}, Confidence: {detection_data['confidence']}")
-
         if detection_data["confidence"] < 0.4:
             raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
@@ -617,8 +779,8 @@ async def check_out():
 
         return {
             "status": "success",
-            "message": "Checked out successfully",  # This message will be used by frontend
-            "action_type": "check_out",  # Add this field to differentiate
+            "message": "Checked out successfully",
+            "action_type": "check_out",
             "employee": {
                 "name": name,
                 "id": emp_id,
@@ -630,7 +792,6 @@ async def check_out():
     except Exception as e:
         logger.error(f"Check-out error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Check-out failed: {str(e)}")
-
 
 async def process_automatic_attendance(identity: str, detection_data: dict):
     """Process automatic attendance based on face detection"""
