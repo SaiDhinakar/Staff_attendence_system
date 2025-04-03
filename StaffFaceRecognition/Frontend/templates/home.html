@@ -68,17 +68,7 @@
         <div class="stream-content">
           <img id="video-frame" src="" alt="Video Stream" />
         </div>
-        <div
-          id="stream-debug"
-          style="
-            margin-top: 10px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            font-size: 12px;
-            color: #666;
-          "
-        ></div>
+        <div id="stream-debug" style="display: none;"></div>
 
         <!-- Check-In / Check-Out Buttons -->
         <div class="checkin-checkout-buttons">
@@ -548,11 +538,15 @@
     }
 
     function updateDebug(message) {
-      const debugElement = document.getElementById("stream-debug");
-      if (debugElement) {
-        const time = new Date().toLocaleTimeString();
-        debugElement.textContent = `[${time}] ${message}`;
-      }
+      // Only log to console, not to UI
+      console.log(`[DEBUG] ${message}`);
+      
+      // The following code is commented out to stop updating the UI element
+      // const debugElement = document.getElementById("stream-debug");
+      // if (debugElement) {
+      //   const time = new Date().toLocaleTimeString();
+      //   debugElement.textContent = `[${time}] ${message}`;
+      // }
     }
 
     // Start streaming
