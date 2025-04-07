@@ -9,3 +9,6 @@ StaffFaceRecognition/Profile/migrations/__pycache__
 env
 .env
 StaffFaceRecognition/backend/face_embeddings.json
+StaffFaceRecognition/StaffFaceData/media
+StaffFaceRecognition/StaffFaceData/face_embeddings.json
+StaffFaceRecognition/StaffFaceData.zip

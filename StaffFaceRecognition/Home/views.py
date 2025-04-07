@@ -73,6 +73,28 @@ def home_view(request):
     return render(request, 'home.html', context)
 
 @login_required
+def get_attendance(request):
+    today = date.today()
+
+    # Get today's attendance
+    today_attendance = Attendance.objects.select_related('emp').filter(date=today)
+
+    # Format attendance data
+    formatted_attendance = [{
+        'emp_id': att.emp.emp_id,
+        'emp_name': att.emp.emp_name,
+        'department': att.emp.department,
+        'time_in': att.get_in_time()[0] if att.get_in_time() else '--:--',
+        'time_out': att.get_out_time()[-1] if att.get_out_time() else '--:--',
+        'working_hours': att.get_working_hours(),
+    } for att in today_attendance]
+
+    return JsonResponse({
+        'date': today.strftime("%Y-%m-%d"),
+        'attendance': formatted_attendance
+    })
+
+@login_required
 def report_view(request):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')

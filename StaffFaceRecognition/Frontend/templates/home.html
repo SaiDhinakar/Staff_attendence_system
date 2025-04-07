@@ -99,9 +99,9 @@
               <th>Working Hours</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="attendance-body">
             {% for record in attendance_data %}
-            <tr>
+            <!-- <tr>
               <td>{{ forloop.counter }}</td>
               <td>{{ record.emp_id }}</td>
               <td>{{ record.emp_name }}</td>
@@ -116,7 +116,7 @@
                 No attendance records for today
               </td>
             </tr>
-            {% endfor %}
+            {% endfor %} -->
           </tbody>
         </table>
       </div>
@@ -153,162 +153,6 @@
     );
 
   console.log("URL : ", IP);
-
-  // document.addEventListener("DOMContentLoaded", function () {
-  //   // Elements
-  //   const videoElement = document.getElementById("video-stream");
-  //   const detectionElement = document.getElementById("detection-id");
-  //   const logElement = document.getElementById("log-container");
-  //   const frameCountElement = document.getElementById("frame-count");
-  //   const connectionStatusElement =
-  //     document.getElementById("connection-status");
-  //   const lastDetectionElement = document.getElementById("last-detection");
-  //   const frameRateElement = document.getElementById("frame-rate");
-
-  //   // Buttons
-  //   const connectButton = document.getElementById("connect-btn");
-  //   const disconnectButton = document.getElementById("disconnect-btn");
-  //   const clearLogButton = document.getElementById("clear-log");
-
-  //   // Stats
-  //   let frameCount = 0;
-  //   let startTime = performance.now();
-  //   let eventSource = null;
-
-  //   // Log function
-  //   function log(message, type = "info") {
-  //     const entry = document.createElement("div");
-  //     entry.className = type;
-  //     entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
-  //     logElement.appendChild(entry);
-  //     logElement.scrollTop = logElement.scrollHeight;
-  //   }
-
-  //   // Update stats
-  //   function updateStats() {
-  //     frameCountElement.textContent = frameCount;
-
-  //     const elapsedSeconds = (performance.now() - startTime) / 1000;
-  //     if (elapsedSeconds > 0) {
-  //       frameRateElement.textContent = (frameCount / elapsedSeconds).toFixed(2);
-  //     }
-  //   }
-
-  //   // Connect to stream
-  //   function connectToStream() {
-  //     // Reset stats
-  //     frameCount = 0;
-  //     startTime = performance.now();
-  //     updateStats();
-
-  //     log("Connecting to video stream...", "info");
-  //     connectionStatusElement.textContent = "Connecting...";
-
-  //     // Create event source
-  //     try {
-  //       eventSource = new EventSource("http://localhost:5600/video_stream");
-
-  //       eventSource.onopen = function () {
-  //         log("Connection established", "success");
-  //         connectionStatusElement.textContent = "Connected";
-  //         setupAttendanceListener(); // Setup the attendance listener after connection
-  //       };
-
-  //       eventSource.onmessage = function (event) {
-  //         try {
-  //           const data = JSON.parse(event.data);
-
-  //           // Alternative image display method
-  //           if (data.type === "frame_update") {
-  //             const imageData = data.data.image;
-  //             if (imageData) {
-  //               // Create a new image element
-  //               const img = new Image();
-  //               img.onload = function () {
-  //                 // Draw to canvas instead of setting src
-  //                 const canvas = document.createElement("canvas");
-  //                 canvas.width = img.width;
-  //                 canvas.height = img.height;
-  //                 const ctx = canvas.getContext("2d");
-  //                 ctx.drawImage(img, 0, 0);
-
-  //                 // Replace existing image with canvas
-  //                 const container = videoElement.parentNode;
-  //                 container.replaceChild(canvas, videoElement);
-  //                 videoElement = canvas;
-
-  //                 log("Frame displayed via canvas", "success");
-  //                 frameCount++;
-  //               };
-
-  //               img.onerror = function () {
-  //                 log("Failed to load image data", "error");
-  //                 console.error(
-  //                   "Image data:",
-  //                   imageData.substring(0, 100) + "..."
-  //                 );
-  //               };
-
-  //               // Set source
-  //               img.src = "data:image/jpeg;base64," + imageData;
-  //             }
-  //           } else if (data.type === "heartbeat") {
-  //             log("Heartbeat received", "info");
-  //           } else if (data.type === "stream_error") {
-  //             log(`Stream error: ${data.data.message}`, "error");
-  //           }
-  //         } catch (error) {
-  //           log(`Error parsing message: ${error}`, "error");
-  //         }
-  //         updateDebug(`Frame received: ${data.type}`);
-  //       };
-
-  //       eventSource.onerror = function (error) {
-  //         log(`Connection error: ${error.type}`, "error");
-  //         connectionStatusElement.textContent = "Error";
-  //       };
-  //     } catch (error) {
-  //       log(`Failed to create connection: ${error}`, "error");
-  //     }
-  //   }
-
-  //   // Disconnect from stream
-  //   function disconnectFromStream() {
-  //     if (eventSource) {
-  //       eventSource.close();
-  //       eventSource = null;
-  //       log("Disconnected from stream", "info");
-  //       connectionStatusElement.textContent = "Disconnected";
-  //     }
-  //   }
-
-  //   // Button event handlers
-  //   connectButton.addEventListener("click", connectToStream);
-  //   disconnectButton.addEventListener("click", disconnectFromStream);
-  //   clearLogButton.addEventListener("click", () => {
-  //     logElement.innerHTML = "";
-  //     log("Log cleared", "info");
-  //   });
-
-  //   document
-  //     .getElementById("test-api-btn")
-  //     .addEventListener("click", function () {
-  //       fetch("http://localhost:5600/health")
-  //         .then((response) => response.json())
-  //         .then((data) => {
-  //           log(
-  //             `API connected successfully: ${JSON.stringify(data)}`,
-  //             "success"
-  //           );
-  //         })
-  //         .catch((error) => {
-  //           log(`API connection failed: ${error}`, "error");
-  //         });
-  //     });
-
-  //   // Connect on page load
-  //   connectToStream();
-  // });
 
   function showProcessingOverlay() {
     const streamContent = document.querySelector(".stream-content");
@@ -424,10 +268,11 @@
       empDept.textContent = employeeData.department || "";
 
       overlay.classList.add("show-success");
-
       setTimeout(() => {
         overlay.classList.remove("show-success");
       }, 3000);
+      // updateAttendance();
+      loadAttendance();
     }
   }
   // Add attendance update listener when connecting
@@ -486,6 +331,8 @@
     }
   }
 
+
+
   document.addEventListener("DOMContentLoaded", function () {
     const videoFrame = document.getElementById("video-frame");
     let eventSource = null;
@@ -504,7 +351,7 @@
 
       eventSource.onopen = () => {
         console.log("Stream connection established successfully");
-        updateDebug("Connected to stream");
+        // updateDebug("Connected to stream");
       };
 
       eventSource.onmessage = (event) => {
@@ -514,39 +361,33 @@
             const imageData = data.data.image;
             if (imageData && typeof imageData === 'string' && imageData.length > 0) {
               videoFrame.src = "data:image/jpeg;base64," + imageData;
-              updateDebug(`Frame received with ${data.data.detection.length} detections`);
+              // updateDebug(`Frame received with ${data.data.detection.length} detections`);
             }
           }
         } catch (error) {
           console.error("Error processing stream data:", error);
-          updateDebug("Frame processing error: " + error.message);
+          // updateDebug("Frame processing error: " + error.message);
         }
       };
 
         eventSource.onerror = (error) => {
           console.error("Stream error:", error);
-          updateDebug("Connection lost - retrying...");
+          // updateDebug("Connection lost - retrying...");
           eventSource.close();
           setTimeout(startVideoStream, 5000);
         };
 
       } catch (error) {
         console.error("Failed to connect:", error);
-        updateDebug("Connection failed");
+        // updateDebug("Connection failed");
         setTimeout(startVideoStream, 5000);
       }
     }
 
     function updateDebug(message) {
       // Only log to console, not to UI
-      console.log(`[DEBUG] ${message}`);
-      
-      // The following code is commented out to stop updating the UI element
-      // const debugElement = document.getElementById("stream-debug");
-      // if (debugElement) {
-      //   const time = new Date().toLocaleTimeString();
-      //   debugElement.textContent = `[${time}] ${message}`;
-      // }
+      // console.log(`[DEBUG] ${message}`);
+
     }
 
     // Start streaming
@@ -559,6 +400,96 @@
       }
     });
   });
+
+  let date, attendance;
+
+function updateAttendance() {
+  fetch('/get_attendace/')  // Make sure URL is correct
+    .then(response => response.json())
+    .then(data => {
+      console.log(data)
+      date = data.date;
+      attendance = data.attendance;
+
+      const tableBody = document.querySelector(".attendance-table tbody");
+      const noDataRow = tableBody.querySelector(".no-data");
+
+        if (noDataRow) {
+          noDataRow.remove();
+        }
+
+        // Check if record already exists
+        const existingRow = Array.from(tableBody.rows).find(
+          (row) => row.cells[1].textContent === record.emp_id
+        );
+
+        if (existingRow) {
+          // Update existing row
+          existingRow.cells[4].textContent = record.time_in_list || "--:--";
+          existingRow.cells[5].textContent = record.time_out_list || "--:--";
+          existingRow.cells[6].textContent = record.working_hours || "--:--";
+        } else {
+          // Create new row
+          const newRow = tableBody.insertRow();
+          newRow.innerHTML = `
+                <td>${tableBody.rows.length + 1}</td>
+                <td>${attendance.emp_id}</td>
+                <td>${attendance.emp_name}</td>
+                <td>${attendance.department}</td>
+                <td>${attendance.time_in_list || "--:--"}</td>
+                <td>${attendance.time_out_list || "--:--"}</td>
+                <td>${attendance.working_hours || "--:--"}</td>
+            `;
+        }
+
+        // Update total present count
+        const presentCountElement = document.querySelector(
+          ".stat-card:nth-child(2) p"
+        );
+        const currentCount = parseInt(presentCountElement.textContent);
+        if (!existingRow) {
+          presentCountElement.textContent = currentCount + 1;
+        }
+    })
+    .catch(error => {
+      console.error("Error fetching attendance:", error);
+    });
+}
+
+async function loadAttendance() {
+        try {
+            const response = await fetch('/get_attendace/');
+            const data = await response.json();
+            console.log(data)
+            const tbody = document.getElementById('attendance-body');
+            tbody.innerHTML = ''; // Clear existing
+
+            data.attendance.forEach((record, index) => {
+                const row = document.createElement('tr');
+
+                row.innerHTML = `
+                  <td>${index + 1}</td>
+                  <td>${record.emp_id}</td>
+                  <td>${record.emp_name}</td>
+                  <td>${record.department}</td>
+                  <td>${record.time_in ?? '--:--'}</td>
+                  <td>${record.time_out ?? '--:--'}</td>
+                  <td>${record.working_hours ?? '--:--'}</td>
+                `;
+
+                tbody.appendChild(row);
+              });
+
+        } catch (err) {
+            console.error("Error loading attendance:", err);
+        }
+    }
+
+
+    window.addEventListener('DOMContentLoaded', () => {
+  loadAttendance(); // safe to run now!
+});
+
 
 </script>
 

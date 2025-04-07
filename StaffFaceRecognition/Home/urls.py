@@ -10,4 +10,5 @@ urlpatterns = [
     path('store-embeddings/', views.store_embeddings, name='store_embeddings'),
     path('employee/<str:employee_id>/', views.employee_detail, name='employee_detail'),
     path('debug-employee/<int:employee_id>/', views.debug_employee_detail, name='debug_employee_detail'),
+    path('get_attendace/',views.get_attendance, name='get_attendace'),
 ]
