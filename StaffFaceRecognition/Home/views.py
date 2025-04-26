@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from .models import Employee, Attendance
 from datetime import datetime, date
@@ -53,23 +53,38 @@ def home_view(request):
     present_count = today_attendance.count()
     absent_count = total_employees - present_count
 
-    # Format attendance data
-    formatted_attendance = [{
-        'emp_id': att.emp.emp_id,
-        'emp_name': att.emp.emp_name,
-        'department': att.emp.department,
-        'time_in_list': att.get_in_time()[0] if att.get_in_time() else '--:--',
-        'time_out_list': att.get_out_time()[-1] if att.get_out_time() else '--:--',
-        'working_hours': att.get_working_hours(),
-    } for att in today_attendance]
+    # Get recent activity (check-ins and check-outs)
+    recent_activity = []
+    for att in today_attendance.order_by('-id')[:10]:  # Get 10 most recent attendance records
+        if att.get_in_time():
+            for time_in in att.get_in_time():
+                recent_activity.append({
+                    'emp_id': att.emp.emp_id,
+                    'name': att.emp.emp_name,
+                    'time': datetime.strptime(time_in, '%H:%M:%S').time(),
+                    'type': 'check_in'
+                })
+        
+        if att.get_out_time():
+            for time_out in att.get_out_time():
+                recent_activity.append({
+                    'emp_id': att.emp.emp_id,
+                    'name': att.emp.emp_name,
+                    'time': datetime.strptime(time_out, '%H:%M:%S').time(),
+                    'type': 'check_out'
+                })
+    
+    # Sort by time (most recent first)
+    recent_activity.sort(key=lambda x: x['time'], reverse=True)
+    recent_activity = recent_activity[:10]  # Limit to 10 items
 
     context = {
-        'present_count': present_count,
-        'attendance_data': formatted_attendance,
-        'current_date': today,
-        'total_staff':total_employees,
+        'present_today': present_count,
+        'absent_today': absent_count,
+        'total_employees': total_employees,
+        'recent_activity': recent_activity
     }
-    print(context)
+    
     return render(request, 'home.html', context)
 
 @login_required

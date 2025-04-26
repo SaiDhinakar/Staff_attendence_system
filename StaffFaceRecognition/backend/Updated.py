@@ -252,6 +252,13 @@ class FaceDetect:
                         # Draw bounding box on frame for visualization (darker color, thicker line, no text)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 120, 0), 4)
 
+                        # Generate overlay data for recognized face
+                        if user_preference["show_overlay"]:
+                            overlay_data = generate_overlay_data(identity)
+                            if overlay_data:
+                                # Store overlay data to be sent with next frame update
+                                latest_overlay_data = overlay_data
+
             # Update global variables
             latest_detection_data = detection_data
             latest_frame = frame
@@ -325,6 +332,48 @@ MIN_ATTENDANCE_INTERVAL = timedelta(minutes=1)
 checked_status = None
 
 employee_check_status  = {}
+
+# Add user preference tracking
+user_preference = {
+    "action": "check_in",  # Default to check-in
+    "show_overlay": True   # Default to showing overlay
+}
+
+# Add function to generate overlay data
+def generate_overlay_data(emp_id):
+    """Generate data for UI overlay based on employee ID"""
+    try:
+        if emp_id == "Unknown" or not emp_id:
+            return None
+            
+        # Get employee details from database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
+        employee = cursor.fetchone()
+        conn.close()
+        
+        if not employee:
+            return None
+            
+        name, department = employee
+        current_time = datetime.now().strftime("%H:%M:%S")
+        
+        # Get current date
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        
+        return {
+            "name": name,
+            "id": emp_id,
+            "department": department,
+            # "confidence": f"{confidence:.2%}" if isinstance(confidence, float) else "N/A",
+            "time": current_time,
+            "date": current_date,
+            "action": user_preference["action"]
+        }
+    except Exception as e:
+        logger.error(f"Error generating overlay data: {e}")
+        return None
 
 async def process_frame_wrapper(frame):
     try:
@@ -414,59 +463,102 @@ async def video_stream():
 def generate_video_stream():
     last_heartbeat = time.time()
     frame_counter = 0
+    frame_buffer = None
+    last_frame_time = time.time()
+    
+    # Create thread-local storage for frame processing
+    # This helps avoid GIL contention and memory copying
+    thread_local = threading.local()
     
     while True:
         current_time = time.time()
-        frame_counter +=1
+        frame_counter += 1
         
-        if latest_frame is not None and frame_counter % 3 == 0:
+        if latest_frame is not None:
             try:
-                # Resize for efficiency
-                frame_small = cv2.resize(latest_frame, (640, 480))
-                
-                # Compress image
-                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 70]
-                _, buffer = cv2.imencode('.jpg', frame_small, encode_param)
-                encoded_frame = base64.b64encode(buffer.tobytes()).decode('utf-8')
-                
-                # Get detection ID safely
-                detection = "Unknown"
-                if latest_detected_ids is not None:
-                    if isinstance(latest_detected_ids, list):
-                        detection = latest_detected_ids[0] if latest_detected_ids else "Unknown"
+                # Process every frame but alternate between sending and skipping
+                # This maintains fluidity while reducing bandwidth
+                if frame_counter % 2 == 0:
+                    # Calculate FPS for logging/debugging
+                    fps = 1.0 / (current_time - last_frame_time) if current_time != last_frame_time else 30.0
+                    last_frame_time = current_time
+                    
+                    # Use a copy to avoid race conditions with the main thread
+                    # Only create a new copy if we're actually going to use it
+                    if not hasattr(thread_local, 'working_frame'):
+                        thread_local.working_frame = latest_frame.copy()
                     else:
-                        detection = latest_detected_ids
-                
-                # Create frame data
-                frame_data = {
-                    "type": "frame_update",
-                    "data": {
-                        "image": encoded_frame,
-                        "detection": detection,
-                        "timestamp": current_time
+                        np.copyto(thread_local.working_frame, latest_frame)
+                    
+                    # Resize for efficiency - maintain aspect ratio
+                    # More efficient resize with fixed dimensions to avoid recalculations
+                    if not hasattr(thread_local, 'resize_dims'):
+                        height, width = thread_local.working_frame.shape[:2]
+                        new_width = 480  # Reduced from 640 for better performance
+                        new_height = int(height * (new_width / width))
+                        thread_local.resize_dims = (new_width, new_height)
+                    
+                    frame_small = cv2.resize(thread_local.working_frame, thread_local.resize_dims, 
+                                             interpolation=cv2.INTER_NEAREST)  # Faster interpolation
+                    
+                    # Compress image more efficiently - trade quality for performance
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 70]  # Reduced quality from 80 to 70
+                    
+                    # Re-use buffer if possible
+                    if frame_buffer is None:
+                        _, buffer = cv2.imencode('.jpg', frame_small, encode_param)
+                        frame_buffer = buffer
+                    else:
+                        # Try to reuse buffer for less memory allocation
+                        try:
+                            success = cv2.imencode('.jpg', frame_small, encode_param, frame_buffer)
+                            if not success:
+                                _, frame_buffer = cv2.imencode('.jpg', frame_small, encode_param)
+                        except:
+                            _, frame_buffer = cv2.imencode('.jpg', frame_small, encode_param)
+                    
+                    # Encode frame only once
+                    encoded_frame = base64.b64encode(frame_buffer.tobytes()).decode('utf-8')
+                    
+                    # Get detection ID efficiently
+                    detection = "Unknown"
+                    if latest_detected_ids is not None:
+                        if isinstance(latest_detected_ids, list):
+                            detection = latest_detected_ids[0] if latest_detected_ids else "Unknown"
+                        else:
+                            detection = latest_detected_ids
+                    
+                    # Create frame data - simplified for better performance
+                    frame_data = {
+                        "type": "frame_update",
+                        "data": {
+                            "image": encoded_frame,
+                            "detection": detection,
+                            "timestamp": int(current_time * 1000)  # Use integer milliseconds
+                        }
                     }
-                }
+                    
+                    # Send frame
+                    yield f"data: {json.dumps(frame_data)}\n\n"
+                    last_heartbeat = current_time
                 
-                # Send frame
-                yield f"data: {json.dumps(frame_data)}\n\n"
-                last_heartbeat = current_time
+                # No delay between frames - the natural processing time provides rate limiting
+                # This allows the system to run as fast as it can handle
                 
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Error in video stream: {error_msg}")
                 yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                time.sleep(0.05)  # Reduced delay if there's an error
                 
-            # Limit frame rate
-            time.sleep(0.03)  # ~30 fps
-            
         else:
             # No frame available, send heartbeat
             if current_time - last_heartbeat > 2.0:
                 yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                 last_heartbeat = current_time
                 
-            # Wait longer when no frames
-            time.sleep(0.5)
+            # Wait shorter time when no frames to check more frequently
+            time.sleep(0.1)  # Reduced from 0.2
 
 def save_attendance(emp_id, detection_time, check_type):
     try:
@@ -544,7 +636,7 @@ def store_embeddings(db_path, output_file):
     embeddings = defaultdict(list, existing_embeddings)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Use higher quality settings for face detection during embedding generation
+    # Use higher quality settings for
     mtcnn = MTCNN(image_size=160, margin=20, min_face_size=50, thresholds=[0.6, 0.7, 0.9], 
                   factor=0.709, post_process=True, keep_all=False, device=device)
     resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
@@ -893,7 +985,7 @@ def calculate_working_hours(emp_id: str) -> str:
         
         # Convert to datetime
         time_in_dt = datetime.strptime(latest_in, "%H:%M:%S")
-        time_out_dt = datetime.strptime(latest_out, "%H:%:M:%S")
+        time_out_dt = datetime.strptime(latest_out, "%H:%M:%S")
         
         # Calculate duration
         duration = time_out_dt - time_in_dt
@@ -1014,6 +1106,57 @@ async def debug_attendance(emp_id: str):
     finally:
         if conn:
             conn.close()
+
+@app.post('/set-preference')
+async def set_preference(preference: dict):
+    """Update user preference for check-in/check-out and overlay display"""
+    global user_preference
+    
+    try:
+        # Update action preference if provided
+        if "action" in preference:
+            if preference["action"] in ["check_in", "check_out"]:
+                user_preference["action"] = preference["action"]
+            else:
+                raise HTTPException(status_code=400, detail="Invalid action value. Must be 'check_in' or 'check_out'")
+        
+        # Update overlay display preference if provided
+        if "show_overlay" in preference:
+            user_preference["show_overlay"] = bool(preference["show_overlay"])
+        
+        return {"status": "success", "preference": user_preference}
+    except Exception as e:
+        logger.error(f"Error setting preference: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get('/get-overlay-data')
+async def get_overlay_data(emp_id: str = None):
+    """Get overlay data for a specific employee or the last detected employee"""
+    try:
+        if emp_id is None:
+            # Use the latest detected ID if no specific ID is provided
+            if latest_detected_ids and latest_detected_ids != "Unknown":
+                emp_id = latest_detected_ids
+            else:
+                return {"status": "error", "message": "No employee detected"}
+        
+        # Find the employee's detection data
+        # confidence = None
+        # if latest_detection_times and emp_id in latest_detection_times:
+        #     confidence = latest_detection_times[emp_id].get("confidence", None)
+        # elif face_recognition_history and emp_id in face_recognition_history:
+        #     confidence = face_recognition_history[emp_id].get("confidence", None)
+        
+        # Generate overlay data
+        overlay_data = generate_overlay_data(emp_id)
+        
+        if overlay_data:
+            return {"status": "success", "data": overlay_data}
+        else:
+            return {"status": "error", "message": "Could not generate overlay data"}
+    except Exception as e:
+        logger.error(f"Error getting overlay data: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 if __name__ == '__main__':
