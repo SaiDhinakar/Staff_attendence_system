@@ -24,6 +24,16 @@
         <div class="video-container">
           <img src="" id="video" alt="Live video stream"/>
           <div id="detection-overlay"></div>
+          <!-- Add people detection list overlay -->
+          <div id="detected-people-overlay" class="detected-people-overlay">
+            <div class="detected-people-header">
+              <i class="material-icons-round">people</i>
+              <span>Recognized People</span>
+            </div>
+            <div class="detected-people-list" id="detectedPeopleList">
+              <!-- People will be added here dynamically -->
+            </div>
+          </div>
           <div class="video-controls">
             <button onclick="checkIn()" class="btn btn-success check-btn">
               <span class="material-icons-round">login</span> Check In
@@ -267,7 +277,7 @@
     
     .status-indicator.active {
         background-color: var(--success);
-        box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        box-shadow: 0 0 8px rgba(0, 185, 129, 0.6);
         animation: pulse 1.5s infinite;
     }
     
@@ -278,13 +288,13 @@
     
     @keyframes pulse {
         0% {
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            box-shadow: 0 0 0 0 rgba(0, 185, 129, 0.7);
         }
         70% {
-            box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            box-shadow: 0 0 0 6px rgba(0, 185, 129, 0);
         }
         100% {
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            box-shadow: 0 0 0 0 rgba(0, 185, 129, 0);
         }
     }
     
@@ -528,6 +538,125 @@
             padding-bottom: 56.25%; /* 16:9 aspect ratio (9/16 = 0.5625) */
         }
     }
+
+    /* Detected People Overlay styles */
+    .detected-people-overlay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 240px;
+        background-color: rgba(255, 255, 255, 0.85);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        color: var(--secondary);
+        overflow: hidden;
+        z-index: 20;
+        transition: all 0.3s ease;
+        display: none;
+    }
+    
+    .detected-people-overlay.show-overlay {
+        display: block;
+    }
+    
+    .detected-people-header {
+        display: flex;
+        align-items: center;
+        padding: 10px 15px;
+        background-color: rgba(34, 197, 94, 0.2);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    .detected-people-header i {
+        margin-right: 8px;
+        font-size: 18px;
+        color: var(--success);
+    }
+    
+    .detected-people-header span {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--secondary);
+    }
+    
+    .detected-people-list {
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 5px 0;
+    }
+    
+    .detected-people-list::-webkit-scrollbar {
+        width: 5px;
+    }
+    
+    .detected-people-list::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    .detected-people-list::-webkit-scrollbar-thumb {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 10px;
+    }
+    
+    .detected-person {
+        display: flex;
+        align-items: center;
+        padding: 8px 15px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        transition: background-color 0.2s;
+    }
+    
+    .detected-person:last-child {
+        border-bottom: none;
+    }
+    
+    .detected-person:hover {
+        background-color: rgba(0, 0, 0, 0.03);
+    }
+    
+    .person-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background-color: #8b5cf6;
+        margin-right: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .person-info {
+        flex: 1;
+    }
+    
+    .person-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--secondary);
+        margin: 0;
+    }
+    
+    .person-id {
+        font-size: 11px;
+        color: var(--gray);
+        margin: 0;
+    }
+    
+    .empty-detection {
+        padding: 15px;
+        text-align: center;
+        color: var(--gray);
+        font-size: 12px;
+    }
+    
+    @media (max-width: 768px) {
+        .detected-people-overlay {
+            width: 200px;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -565,11 +694,18 @@
       overlayToggle.addEventListener('click', function() {
         overlayEnabled = !overlayEnabled;
         
+        // Get both overlays
+        const detectedPeopleOverlay = document.getElementById('detected-people-overlay');
+        
         if (overlayEnabled) {
+          // Show both overlays
           detectionOverlay.classList.add('show-overlay');
+          detectedPeopleOverlay.classList.add('show-overlay');
           overlayToggle.innerHTML = '<span class="material-icons-round">visibility_off</span> Hide Overlay';
         } else {
+          // Hide both overlays
           detectionOverlay.classList.remove('show-overlay');
+          detectedPeopleOverlay.classList.remove('show-overlay');
           overlayToggle.innerHTML = '<span class="material-icons-round">visibility</span> Show Overlay';
         }
       });
@@ -848,17 +984,30 @@
               const imageData = data.data.image;
               if (imageData && typeof imageData === 'string' && imageData.length > 0) {
                 videoFrame.src = "data:image/jpeg;base64," + imageData;
-                updateDebug(`Frame received with ${data.data.detection.length} detections`);
                 
-                // Update face detection overlay if detections exist
-                if (data.data.detection && Array.isArray(data.data.detection)) {
-                  updateDetectionOverlay(data.data.detection);
+                // Get detection data - could be a string or object
+                const detection = data.data.detection;
+                console.log("Detection received:", detection);
+                
+                // Update detected people list with the detection data
+                updateDetectedPeopleList(detection);
+                
+                // For backward compatibility with face boxes
+                if (overlayEnabled) {
+                  // Note: The face box overlay expects an array of objects with coordinates
+                  // We're keeping this call but it won't work with the current backend format
+                  if (Array.isArray(detection)) {
+                    updateDetectionOverlay(detection);
+                  }
                 }
               }
             }
           } catch (error) {
             console.error("Error processing stream data:", error);
-            updateDebug("Frame processing error: " + error.message);
+            if (debugElement) {
+              const time = new Date().toLocaleTimeString();
+              debugElement.textContent = `[${time}] Frame processing error: ${error.message}`;
+            }
           }
         };
 
@@ -896,6 +1045,125 @@
         if (eventSource) {
           eventSource.close();
         }
+      });
+    }
+
+    // Function to update the detected people list
+    function updateDetectedPeopleList(detections) {
+      const peopleList = document.getElementById('detectedPeopleList');
+      if (!peopleList) return;
+      
+      // Clear previous list
+      peopleList.innerHTML = '';
+      
+      // Convert the detection value to an array format the overlay can use
+      const detectedPeople = [];
+      
+      // Handle various formats of detection data
+      if (detections) {
+        // Case 1: If detections is a string (most common case from server)
+        if (typeof detections === 'string' && detections !== 'Unknown') {
+          detectedPeople.push({
+            name: detections,
+            confidence: 0.9 // Default confidence when not provided
+          });
+        }
+        // Case 2: If detections is an array (from older backend versions)
+        else if (Array.isArray(detections)) {
+          detections.forEach(detection => {
+            if (detection.name && detection.name !== 'Unknown') {
+              detectedPeople.push(detection);
+            }
+          });
+        }
+        // Case 3: If detection is a single object
+        else if (typeof detections === 'object' && detections.name && detections.name !== 'Unknown') {
+          detectedPeople.push(detections);
+        }
+      }
+      
+      if (detectedPeople.length === 0) {
+        // Show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-detection';
+        emptyState.textContent = 'No recognized people';
+        peopleList.appendChild(emptyState);
+        return;
+      }
+      
+      // Create list items for each detected person
+      detectedPeople.forEach(person => {
+        const personElement = document.createElement('div');
+        personElement.className = 'detected-person';
+        
+        // Create avatar with initials
+        const avatar = document.createElement('div');
+        avatar.className = 'person-avatar';
+        const personName = person.name || '';
+        const initials = personName.split(' ')
+          .map(name => name.charAt(0))
+          .slice(0, 2)
+          .join('');
+        avatar.textContent = initials;
+        
+        // Apply a unique color for each person based on their ID
+        const colorSeed = personName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        const hue = colorSeed % 360;
+        avatar.style.backgroundColor = `hsl(${hue}, 70%, 60%)`;
+        
+        // Create person info
+        const info = document.createElement('div');
+        info.className = 'person-info';
+        
+        // Add name
+        const name = document.createElement('p');
+        name.className = 'person-name';
+        name.textContent = personName;
+        
+        // Add ID
+        const id = document.createElement('p');
+        id.className = 'person-id';
+        id.textContent = `ID: ${personName}`;
+        
+        // Put it all together
+        info.appendChild(name);
+        info.appendChild(id);
+        personElement.appendChild(avatar);
+        personElement.appendChild(info);
+        peopleList.appendChild(personElement);
+      });
+      
+      // Make the list item clickable for check-in/out
+      const personElements = peopleList.querySelectorAll('.detected-person');
+      personElements.forEach(element => {
+        element.addEventListener('click', function(event) {
+          // Show a small ripple effect on click
+          const ripple = document.createElement('div');
+          ripple.style.position = 'absolute';
+          ripple.style.borderRadius = '50%';
+          ripple.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+          ripple.style.width = '100px';
+          ripple.style.height = '100px';
+          ripple.style.transform = 'translate(-50%, -50%) scale(0)';
+          ripple.style.animation = 'ripple 0.6s linear forwards';
+          
+          element.style.position = 'relative';
+          element.style.overflow = 'hidden';
+          
+          const rect = element.getBoundingClientRect();
+          const x = event.clientX - rect.left;
+          const y = event.clientY - rect.top;
+          
+          ripple.style.left = `${x}px`;
+          ripple.style.top = `${y}px`;
+          
+          element.appendChild(ripple);
+          
+          // Remove ripple after animation
+          setTimeout(() => {
+            ripple.remove();
+          }, 600);
+        });
       });
     }
   });
