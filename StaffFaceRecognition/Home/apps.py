@@ -21,5 +21,5 @@ class HomeConfig(AppConfig):
     def ready(self):
         ip = self.get_ip_address()
         # write the result in .env file
-        with open('./.env', 'w') as f:
+        with open('../../.env', 'w') as f:
             f.write(f"IP='{ip}'")

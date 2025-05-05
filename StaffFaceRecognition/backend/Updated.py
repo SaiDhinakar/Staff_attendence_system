@@ -341,12 +341,53 @@ user_preference = {
 
 # Add function to generate overlay data
 def generate_overlay_data(emp_id):
-    """Generate data for UI overlay based on employee ID"""
+    """Generate data for UI overlay based on employee ID or using face recognition history"""
     try:
-        if emp_id == "Unknown" or not emp_id:
-            return None
+        global face_recognition_history
+        
+        # If we should display a list of detections
+        if isinstance(emp_id, str) and (emp_id == "Unknown" or not emp_id):
+            # Check if we have face recognition history to display
+            if face_recognition_history:
+                # Return all recognized faces in history
+                employees_data = []
+                conn = get_db_connection()
+                
+                for identity, data in face_recognition_history.items():
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
+                        employee = cursor.fetchone()
+                        
+                        if employee:
+                            name, department = employee
+                            employees_data.append({
+                                "name": name,
+                                "id": identity,
+                                "department": department,
+                                "confidence": f"{data['confidence']:.2%}",
+                                "time": data['time']
+                            })
+                    except Exception as e:
+                        logger.error(f"Error getting employee data for {identity}: {e}")
+                
+                conn.close()
+                
+                # Get current date
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                
+                if employees_data:
+                    return {
+                        "employees": employees_data,
+                        "date": current_date,
+                        "action": user_preference["action"],
+                        "multi_detection": True
+                    }
+                return None
+            else:
+                return None
             
-        # Get employee details from database
+        # For a specific employee ID    
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
@@ -366,10 +407,10 @@ def generate_overlay_data(emp_id):
             "name": name,
             "id": emp_id,
             "department": department,
-            # "confidence": f"{confidence:.2%}" if isinstance(confidence, float) else "N/A",
             "time": current_time,
             "date": current_date,
-            "action": user_preference["action"]
+            "action": user_preference["action"],
+            "multi_detection": False
         }
     except Exception as e:
         logger.error(f"Error generating overlay data: {e}")
@@ -696,7 +737,42 @@ async def check_in():
                 "confidence": 0.5,  # Default confidence
                 "time": datetime.now().strftime("%H:%M:%S")
             }
-            return await process_single_checkin(latest_detected_ids, detection_data)
+            
+            # Use direct processing instead of process_single_checkin
+            try:
+                # Set employee check status
+                employee_check_status[str(latest_detected_ids)] = True
+                
+                # Get employee details
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (latest_detected_ids,))
+                employee = cursor.fetchone()
+                conn.close()
+
+                if not employee:
+                    raise HTTPException(status_code=404, detail="Employee not found")
+
+                name, department = employee
+                
+                # Save attendance
+                save_attendance(latest_detected_ids, detection_data["time"], "check_in")
+
+                return {
+                    "status": "success",
+                    "message": "Checked in successfully",
+                    "action_type": "check_in",
+                    "employee": {
+                        "name": name,
+                        "id": latest_detected_ids,
+                        "department": department,
+                        "confidence": f"{detection_data['confidence']:.2%}",
+                        "time": detection_data["time"]
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Check-in error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Check-in failed: {str(e)}")
         else:
             raise HTTPException(status_code=400, detail="No faces detected. Please ensure your face is visible to the camera.")
 
@@ -723,9 +799,6 @@ async def check_in():
                     continue  # Skip if employee not found
                     
                 name, department = employee
-                
-                # Allow check-in with any confidence level when explicitly initiated
-                # Remove this line: if data['confidence'] < 0.4:
                     
                 # Save attendance
                 save_attendance(identity, data['time'], "check_in")
@@ -761,7 +834,38 @@ async def check_in():
     if latest_detection_times:
         emp_id, detection_data = next(iter(latest_detection_times.items()))
         employee_check_status[str(emp_id)] = True
-        return await process_single_checkin(emp_id, detection_data)
+        
+        # Use direct processing instead of process_single_checkin
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
+            employee = cursor.fetchone()
+            conn.close()
+
+            if not employee:
+                raise HTTPException(status_code=404, detail="Employee not found")
+
+            name, department = employee
+
+            # Save attendance
+            save_attendance(emp_id, detection_data["time"], "check_in")
+
+            return {
+                "status": "success",
+                "message": "Checked in successfully",
+                "action_type": "check_in",
+                "employee": {
+                    "name": name,
+                    "id": emp_id,
+                    "department": department,
+                    "confidence": f"{detection_data['confidence']:.2%}",
+                    "time": detection_data["time"]
+                }
+            }
+        except Exception as e:
+            logger.error(f"Check-in error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Check-in failed: {str(e)}")
         
     # If we get here, we couldn't find any valid faces
     raise HTTPException(status_code=400, detail="No recognizable faces found. Please ensure your face is visible to the camera.")
