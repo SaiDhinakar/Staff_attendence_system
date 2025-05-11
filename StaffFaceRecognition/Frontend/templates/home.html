@@ -962,8 +962,12 @@
 
       try {
         console.log("Creating new EventSource connection...");
-        console.log("URL:", `http://${IP}:5600/video_stream`);
-        eventSource = new EventSource(`http://${IP}:5600/video_stream`);
+        // Use window.location.hostname to get the actual server address
+        const serverHost = window.location.hostname;
+        console.log("Using server host:", serverHost);
+        const streamUrl = `http://${serverHost}:5600/video_stream`;
+        console.log("Stream URL:", streamUrl);
+        eventSource = new EventSource(streamUrl);
 
         eventSource.onopen = () => {
           console.log("Stream connection established successfully");
