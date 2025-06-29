@@ -39,9 +39,9 @@ latest_frame = None
 latest_detected_ids = []
 logger = logging.getLogger(__name__)
 
-# Face recognition history buffer - stores recognized faces for 2 minutes
+# Face recognition history buffer - stores recognized faces for 5 minutes
 face_recognition_history = {}
-RECOGNITION_HISTORY_TIMEOUT = 60  
+RECOGNITION_HISTORY_TIMEOUT = 300  # Increased to 5 minutes
 
 # manage the face recognition history
 def update_recognition_history(identity, confidence, face_image=None):
@@ -62,7 +62,7 @@ def update_recognition_history(identity, confidence, face_image=None):
         del face_recognition_history[face_id]
     
     # Add or update the current detection if it passes threshold
-    if identity != "Unknown" and confidence is not None and confidence >= 0.4:  # Same threshold as check-in
+    if identity != "Unknown" and confidence is not None and confidence >= 0.3:  # Lowered threshold for better detection
         if identity not in face_recognition_history:
             face_recognition_history[identity] = {
                 'identity': identity,
@@ -72,12 +72,12 @@ def update_recognition_history(identity, confidence, face_image=None):
                 'time': current_time.strftime("%H:%M:%S")
             }
         else:
-            # Update with higher confidence if found
+            # Update with higher confidence if found, or refresh timestamp
             if confidence > face_recognition_history[identity]['confidence']:
                 face_recognition_history[identity]['confidence'] = confidence
-                face_recognition_history[identity]['timestamp'] = current_time
                 face_recognition_history[identity]['face_image'] = face_image
-                face_recognition_history[identity]['time'] = current_time.strftime("%H:%M:%S")
+            face_recognition_history[identity]['timestamp'] = current_time  # Always refresh timestamp
+            face_recognition_history[identity]['time'] = current_time.strftime("%H:%M:%S")
     
     return face_recognition_history
 
@@ -307,9 +307,13 @@ class FaceDetect:
 
             for name, encodings in self.embeddings.items():
                 for db_enc in encodings:
-                    dist = torch.nn.functional.pairwise_distance(
-                        embedding, torch.tensor(db_enc).unsqueeze(0)
-                    ).item()
+                    # Ensure both embeddings are properly shaped for distance calculation
+                    db_embedding = torch.tensor(db_enc).flatten().unsqueeze(0)  # [1, 512]
+                    current_embedding = embedding.flatten().unsqueeze(0)       # [1, 512]
+                    
+                    # Calculate distance - now both tensors have compatible shapes
+                    dist = torch.nn.functional.pairwise_distance(current_embedding, db_embedding).item()
+                    
                     if dist < min_dist:
                         min_dist = dist
                         identity = name
@@ -603,16 +607,21 @@ def generate_video_stream():
 
 def save_attendance(emp_id, detection_time, check_type):
     try:
-        conn = sqlite3.connect(r"../db.sqlite3")
+        print(f"DEBUG - save_attendance called with: emp_id={emp_id}, detection_time={detection_time}, check_type={check_type}")
+        
+        # Use the same get_db_connection function for consistency
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         # Get current date
         current_date = datetime.now().strftime("%Y-%m-%d")
+        print(f"DEBUG - Current date: {current_date}")
 
         # Check if the employee already has an attendance record for today
         cursor.execute("SELECT id, time_in_list, time_out_list FROM Home_attendance WHERE emp_id = ? AND date = ?",
                     (emp_id, current_date))
         record = cursor.fetchone()
+        print(f"DEBUG - Existing record: {record}")
 
         if record:
             # Record exists, update time_in or time_out by appending new time
@@ -640,6 +649,7 @@ def save_attendance(emp_id, detection_time, check_type):
 
         else:
             # Insert a new record with the first detection time
+            print(f"DEBUG - Creating new attendance record")
             if check_type == "check_in":
                 cursor.execute(
                     "INSERT INTO Home_attendance (date, emp_id, time_in_list, time_out_list) VALUES (?, ?, ?, ?)",
@@ -655,11 +665,15 @@ def save_attendance(emp_id, detection_time, check_type):
         print(f"DEBUG - Database committed successfully")
         return True
     except sqlite3.Error as e:
-        print(f"Database error: {e}")
+        print(f"DEBUG - Database error: {e}")
         raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+    except Exception as e:
+        print(f"DEBUG - General error in save_attendance: {e}")
+        raise
     finally:
         if conn:
             conn.close()
+            print(f"DEBUG - Database connection closed")
 
 class EmbeddingRequest(BaseModel):
     db_path: str
@@ -727,10 +741,17 @@ def load_embeddings(input_file: str = "face_embeddings.json"):
 async def check_in():
     global face_recognition_history, latest_detection_times
 
+    print(f"DEBUG - Check-in called")
+    print(f"DEBUG - face_recognition_history: {len(face_recognition_history) if face_recognition_history else 0} items")
+    print(f"DEBUG - latest_detection_times: {len(latest_detection_times) if latest_detection_times else 0} items")
+    print(f"DEBUG - latest_detected_ids: {latest_detected_ids}")
+
     # Check if we have recent face data
     if not face_recognition_history and not latest_detection_times:
+        print("DEBUG - No face recognition history or latest detection times")
         # If both are empty, check if there's any recent detection at all
         if latest_detected_ids and latest_detected_ids != "Unknown":
+            print(f"DEBUG - Using latest_detected_ids: {latest_detected_ids}")
             # Create a basic detection record to use
             detection_data = {
                 "identity": latest_detected_ids,
@@ -748,15 +769,20 @@ async def check_in():
                 cursor = conn.cursor()
                 cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (latest_detected_ids,))
                 employee = cursor.fetchone()
-                conn.close()
-
+                
+                print(f"DEBUG - Employee query result: {employee}")
+                
                 if not employee:
+                    conn.close()
                     raise HTTPException(status_code=404, detail="Employee not found")
 
                 name, department = employee
+                conn.close()
                 
+                print(f"DEBUG - About to save attendance for {latest_detected_ids}")
                 # Save attendance
                 save_attendance(latest_detected_ids, detection_data["time"], "check_in")
+                print(f"DEBUG - Attendance saved successfully")
 
                 return {
                     "status": "success",
@@ -771,35 +797,41 @@ async def check_in():
                     }
                 }
             except Exception as e:
+                print(f"DEBUG - Exception in check-in: {str(e)}")
                 logger.error(f"Check-in error: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Check-in failed: {str(e)}")
         else:
+            print("DEBUG - No latest_detected_ids available")
             raise HTTPException(status_code=400, detail="No faces detected. Please ensure your face is visible to the camera.")
 
     # If we have face recognition history, use it
     if face_recognition_history:
+        print(f"DEBUG - Processing face_recognition_history with {len(face_recognition_history)} items")
         # Process all faces in the recognition history
         results = []
         current_time = datetime.now()
         
         for identity, data in face_recognition_history.items():
+            print(f"DEBUG - Processing identity: {identity} with confidence: {data.get('confidence', 'N/A')}")
             try:
                 # Set employee check status
                 employee_check_status[str(identity)] = True
                 
                 # Get employee details from DB
-                db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
-                conn = sqlite3.connect(db_path)
+                conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
                 employee = cursor.fetchone()
-                conn.close()
                 
                 if not employee:
+                    print(f"DEBUG - Employee {identity} not found in database")
+                    conn.close()
                     continue  # Skip if employee not found
                     
                 name, department = employee
-                    
+                conn.close()
+                
+                print(f"DEBUG - Saving attendance for {identity}")
                 # Save attendance
                 save_attendance(identity, data['time'], "check_in")
                 
@@ -813,6 +845,7 @@ async def check_in():
                 })
                 
             except Exception as e:
+                print(f"DEBUG - Error processing check-in for {identity}: {e}")
                 logger.error(f"Error processing check-in for {identity}: {e}")
                 # Continue processing other employees even if one fails
         
@@ -820,6 +853,7 @@ async def check_in():
         face_recognition_history.clear()
         
         if results:
+            print(f"DEBUG - Returning {len(results)} successful check-ins")
             # Return multiple results if available
             return {
                 "status": "success",
@@ -832,6 +866,7 @@ async def check_in():
     
     # Fallback to latest detection if available
     if latest_detection_times:
+        print(f"DEBUG - Using latest_detection_times: {latest_detection_times}")
         emp_id, detection_data = next(iter(latest_detection_times.items()))
         employee_check_status[str(emp_id)] = True
         
@@ -841,13 +876,15 @@ async def check_in():
             cursor = conn.cursor()
             cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (emp_id,))
             employee = cursor.fetchone()
-            conn.close()
 
             if not employee:
+                conn.close()
                 raise HTTPException(status_code=404, detail="Employee not found")
 
             name, department = employee
+            conn.close()
 
+            print(f"DEBUG - Saving attendance for {emp_id} from latest_detection_times")
             # Save attendance
             save_attendance(emp_id, detection_data["time"], "check_in")
 
@@ -864,10 +901,12 @@ async def check_in():
                 }
             }
         except Exception as e:
+            print(f"DEBUG - Exception in latest_detection_times processing: {str(e)}")
             logger.error(f"Check-in error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Check-in failed: {str(e)}")
         
     # If we get here, we couldn't find any valid faces
+    print("DEBUG - No recognizable faces found")
     raise HTTPException(status_code=400, detail="No recognizable faces found. Please ensure your face is visible to the camera.")
 
 @app.get('/check-out')

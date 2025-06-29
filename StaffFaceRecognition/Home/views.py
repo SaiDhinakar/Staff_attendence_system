@@ -30,7 +30,7 @@ from django.core.paginator import Paginator
 logger = logging.getLogger(__name__)
 
 config = dotenv_values("./.env")
-IP = config.get("IP")
+IP = config.get("IP", "127.0.0.1")  # Default to localhost if no IP in .env
 
 def get_env_values(request):
     env_vars = {
