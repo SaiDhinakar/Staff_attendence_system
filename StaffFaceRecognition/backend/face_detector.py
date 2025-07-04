@@ -35,24 +35,10 @@ app.add_middleware(
 latest_detection_data = None
 logger = logging.getLogger(__name__)
 
-class RateLimiter:
-    def __init__(self, interval):
-        self.interval = interval
-        self.last_check = {}
-    
-    def can_process(self, identity):
-        now = time.time()
-        if identity not in self.last_check:
-            self.last_check[identity] = now
-            return True
-        
-        if now - self.last_check[identity] >= self.interval:
-            self.last_check[identity] = now
-            return True
-        return False
+# Removed RateLimiter class since we're not using automatic attendance anymore
 
-# Add near the top with other globals
-attendance_limiter = RateLimiter(60)  # 60 second interval
+# Remove the rate limiter since we're not doing automatic attendance
+# attendance_limiter = RateLimiter(60)  # 60 second interval
 
 class FaceDetect:
     def __init__(self, db_file="face_embeddings.json"):
@@ -179,10 +165,7 @@ class FaceDetect:
             "last_detection": time.strftime("%H:%M:%S", time.localtime())
         }
 
-        if detection_data["identity"] != "Unknown":
-            # Process automatic attendance
-            async for event in process_automatic_attendance(detection_data["identity"], detection_data):
-                yield event
+        # Removed automatic attendance processing - attendance only through UI buttons
 
         # Instead of return, we'll update these values directly
         latest_frame = frame
@@ -234,8 +217,7 @@ face_detector = FaceDetect()
 latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
-last_attendance_time: Dict[str, datetime] = {}
-MIN_ATTENDANCE_INTERVAL = timedelta(minutes=1)  # Minimum time between attendance marks
+# Removed automatic attendance variables since we're only using manual attendance
 
 def reset_camera():
     """Force reset the Jetson camera pipeline to fix stream issues."""
@@ -508,6 +490,7 @@ async def check_in():
     if detection_data["confidence"] < 0.4:
         raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
+    # Only save attendance when button is clicked
     save_attendance(emp_id, detection_data["time"], "check_in")
 
     return {
@@ -553,6 +536,7 @@ async def check_out():
     if detection_data["confidence"] < 0.4:  # Higher threshold for check-out
         raise HTTPException(status_code=400, detail="Face recognition confidence too low")
 
+    # Only save attendance when button is clicked
     save_attendance(emp_id, detection_data["time"], "check_out")
 
     return {
@@ -574,77 +558,8 @@ async def video_stream():
     return StreamingResponse(generate_video_stream(), media_type='text/event-stream')
 
 
-async def process_automatic_attendance(identity: str, detection_data: dict):
-    """Process automatic attendance based on face detection"""
-    try:
-        # Validate attendance first
-        if not validate_attendance(identity, "check_in"):
-            logger.warning(f"Attendance validation failed for {identity}")
-            return
-            
-        current_time = datetime.now()
-    
-        # Check if enough time has passed since last attendance
-        if identity in last_attendance_time:
-            time_diff = current_time - last_attendance_time[identity]
-            if time_diff < MIN_ATTENDANCE_INTERVAL:
-                return
-    
-        try:
-            # Get employee details
-            db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
-            employee = cursor.fetchone()
-            
-            if not employee:
-                return
-                
-            name, department = employee
-            
-            # Determine check type based on time
-            current_hour = current_time.hour
-            check_type = "check_in" if current_hour < 12 else "check_out"
-            
-            # Save attendance
-            detection_time = current_time.strftime("%H:%M:%S")
-            save_attendance(identity, detection_time, check_type)
-            
-            # Update last attendance time
-            last_attendance_time[identity] = current_time
-            
-            # Prepare attendance record for frontend
-            attendance_record = {
-                "emp_id": identity,
-                "emp_name": name,
-                "department": department,
-                "time_in_list": detection_time if check_type == "check_in" else None,
-                "time_out_list": detection_time if check_type == "check_out" else None,
-                "working_hours": calculate_working_hours(identity)
-            }
-            
-            # Send SSE event with attendance update
-            data = {
-                "type": "attendance_update",
-                "data": attendance_record
-            }
-            yield f"data: {json.dumps(data)}\n\n"
-            
-        except Exception as e:
-            print(f"Error in automatic attendance: {e}")
-        finally:
-            if conn:
-                conn.close()
-                
-    except Exception as e:
-        logger.error(f"Error in automatic attendance: {e}")
-        # Send error event to frontend
-        error_data = {
-            "type": "attendance_error",
-            "data": {"message": str(e)}
-        }
-        yield f"data: {json.dumps(error_data)}\n\n"
+# Removed automatic attendance processing functions since we only use manual button clicks
+# The process_automatic_attendance function is no longer needed
 
 def calculate_working_hours(emp_id: str) -> str:
     """Calculate working hours for an employee"""
@@ -695,33 +610,17 @@ class AttendanceError(Exception):
     pass
 
 def validate_attendance(emp_id: str, check_type: str) -> bool:
-    """Validate attendance marking conditions"""
+    """Validate attendance marking conditions - simplified for manual attendance only"""
     try:
         conn = sqlite3.connect(r"../db.sqlite3")
         cursor = conn.cursor()
-        current_date = datetime.now().strftime("%Y-%m-%d")
         
         # Check if employee exists
         cursor.execute("SELECT emp_id FROM Home_employee WHERE emp_id = ?", (emp_id,))
         if not cursor.fetchone():
             raise AttendanceError("Employee not found")
             
-        # Check for duplicate check-in/out in short time
-        cursor.execute("""
-            SELECT time_in_list, time_out_list 
-            FROM Home_attendance 
-            WHERE emp_id = ? AND date = ?
-        """, (emp_id, current_date))
-        
-        record = cursor.fetchone()
-        if record:
-            time_list = record[0] if check_type == "check_in" else record[1]
-            if time_list:
-                last_time = datetime.strptime(time_list.split(',')[-1], "%H:%M:%S")
-                time_diff = datetime.now() - last_time
-                if time_diff < MIN_ATTENDANCE_INTERVAL:
-                    raise AttendanceError("Too soon for another attendance mark")
-                    
+        # For manual attendance, we allow immediate check-in/out without time restrictions
         return True
         
     except AttendanceError as e:
