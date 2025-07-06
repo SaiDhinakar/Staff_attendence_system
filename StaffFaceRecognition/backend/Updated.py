@@ -12,11 +12,10 @@ from fastapi.responses import StreamingResponse
 import numpy as np
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from pydantic import BaseModel
 from collections import defaultdict, deque
 import uvicorn
-from typing import Dict
 import asyncio
 import logging
 from fastapi import BackgroundTasks
@@ -330,12 +329,8 @@ face_detector = FaceDetect()
 latest_frame = None
 latest_detected_ids = []
 latest_detection_times = {}
-last_attendance_time: Dict[str, datetime] = {}
-MIN_ATTENDANCE_INTERVAL = timedelta(minutes=1) 
 
 checked_status = None
-
-employee_check_status  = {}
 
 # Add user preference tracking
 user_preference = {
@@ -479,12 +474,6 @@ def video_capture():
 
                 # Use the event loop to run async functions
                 loop.run_until_complete(process_frame_wrapper(frame))
-
-                if employee_check_status:
-                    if employee_check_status[str(latest_detected_ids)]:
-                        loop.run_until_complete(check_in())
-                    else:
-                        loop.run_until_complete(check_out())
 
             except Exception as e:
                 logger.error(f"Error processing frame: {str(e)}")
@@ -761,9 +750,6 @@ async def check_in():
             
             # Use direct processing instead of process_single_checkin
             try:
-                # Set employee check status
-                employee_check_status[str(latest_detected_ids)] = True
-                
                 # Get employee details
                 conn = get_db_connection()
                 cursor = conn.cursor()
@@ -814,9 +800,6 @@ async def check_in():
         for identity, data in face_recognition_history.items():
             print(f"DEBUG - Processing identity: {identity} with confidence: {data.get('confidence', 'N/A')}")
             try:
-                # Set employee check status
-                employee_check_status[str(identity)] = True
-                
                 # Get employee details from DB
                 conn = get_db_connection()
                 cursor = conn.cursor()
@@ -868,7 +851,6 @@ async def check_in():
     if latest_detection_times:
         print(f"DEBUG - Using latest_detection_times: {latest_detection_times}")
         emp_id, detection_data = next(iter(latest_detection_times.items()))
-        employee_check_status[str(emp_id)] = True
         
         # Use direct processing instead of process_single_checkin
         try:
@@ -935,9 +917,6 @@ async def check_out():
         
         for identity, data in face_recognition_history.items():
             try:
-                # Set employee check status
-                employee_check_status[str(identity)] = False
-                
                 # Get employee details from DB
                 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
                 conn = sqlite3.connect(db_path)
@@ -987,7 +966,6 @@ async def check_out():
     # Fallback to latest detection if available
     if latest_detection_times:
         emp_id, detection_data = next(iter(latest_detection_times.items()))
-        employee_check_status[str(emp_id)] = False
         return await process_single_checkout(emp_id, detection_data)
         
     # If we get here, we couldn't find any valid faces
@@ -1027,78 +1005,6 @@ async def process_single_checkout(emp_id, detection_data):
     except Exception as e:
         logger.error(f"Check-out error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Check-out failed: {str(e)}")
-
-async def process_automatic_attendance(identity: str, detection_data: dict):
-    """Process automatic attendance based on face detection"""
-    try:
-        # Validate attendance first
-        if not validate_attendance(identity, "check_in"):
-            logger.warning(f"Attendance validation failed for {identity}")
-            return
-            
-        current_time = datetime.now()
-    
-        # Check if enough time has passed since last attendance
-        if identity in last_attendance_time:
-            time_diff = current_time - last_attendance_time[identity]
-            if time_diff < MIN_ATTENDANCE_INTERVAL:
-                return
-    
-        try:
-            # Get employee details
-            db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'db.sqlite3'))
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT emp_name, department FROM Home_employee WHERE emp_id = ?", (identity,))
-            employee = cursor.fetchone()
-            
-            if not employee:
-                return
-                
-            name, department = employee
-            
-            # Determine check type based on time
-            current_hour = current_time.hour
-            check_type = "check_in" if current_hour < 12 else "check_out"
-            
-            # Save attendance
-            detection_time = current_time.strftime("%H:%M:%S")
-            save_attendance(identity, detection_time, check_type)
-            
-            # Update last attendance time
-            last_attendance_time[identity] = current_time
-            
-            # Prepare attendance record for frontend
-            attendance_record = {
-                "emp_id": identity,
-                "emp_name": name,
-                "department": department,
-                "time_in_list": detection_time if check_type == "check_in" else None,
-                "time_out_list": detection_time if check_type == "check_out" else None,
-                "working_hours": calculate_working_hours(identity)
-            }
-            
-            # Send SSE event with attendance update
-            data = {
-                "type": "attendance_update",
-                "data": attendance_record
-            }
-            yield f"data: {json.dumps(data)}\n\n"
-            
-        except Exception as e:
-            print(f"Error in automatic attendance: {e}")
-        finally:
-            if conn:
-                conn.close()
-                
-    except Exception as e:
-        logger.error(f"Error in automatic attendance: {e}")
-        # Send error event to frontend
-        error_data = {
-            "type": "attendance_error",
-            "data": {"message": str(e)}
-        }
-        yield f"data: {json.dumps(error_data)}\n\n"
 
 def calculate_working_hours(emp_id: str) -> str:
     """Calculate working hours for an employee"""
@@ -1140,48 +1046,6 @@ def calculate_working_hours(emp_id: str) -> str:
     except Exception as e:
         print(f"Error calculating working hours: {e}")
         return "--:--"
-    finally:
-        if conn:
-            conn.close()
-
-class AttendanceError(Exception):
-    """Custom exception for attendance-related errors"""
-    pass
-
-
-def validate_attendance(emp_id: str, check_type: str) -> bool:
-    """Validate attendance marking conditions"""
-    try:
-        conn = sqlite3.connect(r"../db.sqlite3")
-        cursor = conn.cursor()
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        
-        # Check if employee exists
-        cursor.execute("SELECT emp_id FROM Home_employee WHERE emp_id = ?", (emp_id,))
-        if not cursor.fetchone():
-            raise AttendanceError("Employee not found")
-            
-        # Check for duplicate check-in/out in short time
-        cursor.execute("""
-            SELECT time_in_list, time_out_list 
-            FROM Home_attendance 
-            WHERE emp_id = ? AND date = ?
-        """, (emp_id, current_date))
-        
-        record = cursor.fetchone()
-        if record:
-            time_list = record[0] if check_type == "check_in" else record[1]
-            if time_list:
-                last_time = datetime.strptime(time_list.split(',')[-1], "%H:%M:%S")
-                time_diff = datetime.now() - last_time
-                if time_diff < MIN_ATTENDANCE_INTERVAL:
-                    raise AttendanceError("Too soon for another attendance mark")
-                    
-        return True
-        
-    except AttendanceError as e:
-        print(f"Attendance validation failed: {e}")
-        return False
     finally:
         if conn:
             conn.close()
