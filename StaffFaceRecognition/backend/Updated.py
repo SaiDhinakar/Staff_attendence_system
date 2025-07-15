@@ -1,4 +1,6 @@
+
 import cv2
+import queue
 import torch
 import json
 import os
@@ -21,7 +23,11 @@ import logging
 from fastapi import BackgroundTasks
 from PIL import Image, ImageEnhance  
 
+
 app = FastAPI()
+
+# Queue for recent activity events (for SSE)
+recent_activity_queue = queue.Queue()
 
 # Enable CORS
 app.add_middleware(
@@ -652,6 +658,15 @@ def save_attendance(emp_id, detection_time, check_type):
 
         conn.commit()
         print(f"DEBUG - Database committed successfully")
+
+        # Broadcast recent activity to SSE clients
+        activity = {
+            "emp_id": emp_id,
+            "detection_time": detection_time,
+            "check_type": check_type,
+            "timestamp": datetime.now().isoformat()
+        }
+        recent_activity_queue.put(activity)
         return True
     except sqlite3.Error as e:
         print(f"DEBUG - Database error: {e}")
@@ -1165,7 +1180,26 @@ async def get_overlay_data(emp_id: str = None):
         logger.error(f"Error getting overlay data: {e}")
         return {"status": "error", "message": str(e)}
 
+# SSE endpoint for recent activity updates
+@app.get('/recent-activity-stream')
+async def recent_activity_stream():
+    """SSE endpoint for recent activity updates."""
+    from starlette.responses import StreamingResponse
+    import asyncio
+
+    async def event_generator():
+        while True:
+            try:
+                # Wait for new activity
+                activity = await asyncio.get_event_loop().run_in_executor(None, recent_activity_queue.get)
+                yield f"data: {json.dumps(activity)}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                await asyncio.sleep(1)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 if __name__ == '__main__':
-    threading.Thread(target=lambda: asyncio.run(video_capture()), daemon=True).start()
+    loop = asyncio.get_event_loop()
+    threading.Thread(target=lambda: loop.run_until_complete(video_capture()), daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=5600)

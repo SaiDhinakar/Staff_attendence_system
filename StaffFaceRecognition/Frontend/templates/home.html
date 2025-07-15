@@ -663,6 +663,30 @@
 {% block scripts %}
 <script>
   document.addEventListener("DOMContentLoaded", function() {
+
+      // Connect to the SSE endpoint
+      const eventSource = new EventSource('http://127.0.0.1:5600/recent-activity-stream');
+
+      // Listen for new activity events
+      eventSource.onmessage = function(event) {
+          const activity = JSON.parse(event.data);
+          // Update your recent activity container here
+          console.log(activity)
+          updateRecentActivity(activity);
+      };
+
+      // Optional: handle errors
+      eventSource.onerror = function(err) {
+          console.error('SSE error:', err);
+      };
+
+      function updateRecentActivity(activity) {
+      // Example: append to a list
+      const container = document.getElementById('recent-activity-container');
+      const item = document.createElement('div');
+      item.textContent = `${activity.check_type} - ${activity.emp_id} at ${activity.detection_time}`;
+      container.prepend(item); // Add to top
+      }
       // Declare IP variable properly
       let IP;
       

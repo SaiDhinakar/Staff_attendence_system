@@ -75,7 +75,7 @@ if ps -p $BACKEND_PID > /dev/null; then
     trap cleanup SIGINT SIGTERM
     
     # Start Django server
-    python manage.py runserver 0.0.0.0:8000
+    python manage.py runserver 0.0.0.0:8080
     
     # If we get here, Django stopped, so clean up
     cleanup

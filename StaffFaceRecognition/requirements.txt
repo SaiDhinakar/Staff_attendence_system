@@ -17,7 +17,7 @@ numpy==1.19.5
 
 # API and Async
 fastapi==0.65.2
-uvicorn['standard']
+uvicorn
 asyncio
 aiohttp==3.7.4
 
